@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  input,
+  select,
+  textarea {
+    color: #0f172a;
+    background-color: #ffffff;
+    color-scheme: light;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: #94a3b8;
+    opacity: 1;
+  }
+
+  input:disabled,
+  select:disabled,
+  textarea:disabled {
+    color: #64748b;
+    cursor: not-allowed;
+  }
+
+  select option {
+    color: #0f172a;
+    background-color: #ffffff;
+  }
+}

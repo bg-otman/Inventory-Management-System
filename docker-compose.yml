@@ -1,0 +1,61 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: mizan_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: mizan
+      POSTGRES_PASSWORD: mizan_secret
+      POSTGRES_DB: mizan_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backups:/backups
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mizan_backend
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://mizan:mizan_secret@db:5432/mizan_db
+      SECRET_KEY: mizan_super_secret_session_key_production_2026
+      ENVIRONMENT: production
+      BACKUP_DIR: /backups
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backups:/backups
+    depends_on:
+      - db
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: mizan_frontend
+    restart: always
+    environment:
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: mizan_nginx
+    restart: always
+    ports:
+      - "8080:80"
+    depends_on:
+      - frontend
+      - backend
+
+volumes:
+  postgres_data:
