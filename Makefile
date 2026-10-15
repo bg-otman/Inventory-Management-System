@@ -1,14 +1,25 @@
-all:
-	@docker compose up --build -d
+COMPOSE = docker compose --env-file .env
 
-up: all
+all: up
+
+env:
+	@if [ ! -f .env ]; then python3 ops/setup_env.py; fi
+
+up: env
+	@$(COMPOSE) up --build -d
 
 down:
-	@docker compose down --remove-orphans
+	@$(COMPOSE) down --remove-orphans
 
 down-v:
-	@docker compose down --volumes --remove-orphans
+	@$(COMPOSE) down --volumes --remove-orphans
 
-re: down all
+re: down up
 
-.PHONY: all down down-v re up
+logs:
+	@$(COMPOSE) logs --tail=100 -f
+
+ps:
+	@$(COMPOSE) ps
+
+.PHONY: all env up down down-v re logs ps

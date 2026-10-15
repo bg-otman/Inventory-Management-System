@@ -1,0 +1,11 @@
+.git
+node_modules
+.next
+out
+.venv
+.env
+.env.*
+backend
+__pycache__
+*.db
+*.tar.gz

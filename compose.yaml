@@ -1,0 +1,67 @@
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: mizan
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run ops/setup_env.py first}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Run ops/setup_env.py first}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - ./ops/init-db.sh:/docker-entrypoint-initdb.d/10-mizan.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d mizan"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+  api:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://mizan:${APP_DB_PASSWORD}@db:5432/mizan
+      OWNER_USERNAME: ${OWNER_USERNAME:-owner}
+      OWNER_NAME: ${OWNER_NAME:-Owner}
+      OWNER_PASSWORD: ${OWNER_PASSWORD:?Run ops/setup_env.py first}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      CONTROL_DIR: /control
+      BACKUP_DIR: /backup-store
+    volumes:
+      - control:/control
+      - ${BACKUP_HOST_DIR:?Choose a private backup storage directory}:/backup-store:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+    ports:
+      - "127.0.0.1:8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+  backup-worker:
+    build: ./backend
+    command: ["python", "-m", "app.backups", "worker"]
+    environment:
+      BACKUP_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/mizan
+      APP_DB_USER: mizan
+      CONTROL_DIR: /control
+      BACKUP_DIR: /backup-store
+    volumes:
+      - control:/control
+      - ${BACKUP_HOST_DIR}:/backup-store
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+volumes:
+  postgres_data:
+  control:
