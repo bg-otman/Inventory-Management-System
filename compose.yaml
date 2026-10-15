@@ -2,15 +2,15 @@ services:
   db:
     image: postgres:18
     environment:
-      POSTGRES_DB: mizan
+      POSTGRES_DB: inventory
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run ops/setup_env.py first}
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Run ops/setup_env.py first}
     volumes:
       - postgres_data:/var/lib/postgresql
-      - ./ops/init-db.sh:/docker-entrypoint-initdb.d/10-mizan.sh:ro
+      - ./ops/init-db.sh:/docker-entrypoint-initdb.d/10-inventory.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d mizan"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d inventory"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -18,7 +18,7 @@ services:
   api:
     build: ./backend
     environment:
-      DATABASE_URL: postgresql+psycopg://mizan:${APP_DB_PASSWORD}@db:5432/mizan
+      DATABASE_URL: postgresql+psycopg://inventory:${APP_DB_PASSWORD}@db:5432/inventory
       OWNER_USERNAME: ${OWNER_USERNAME:-owner}
       OWNER_NAME: ${OWNER_NAME:-Owner}
       OWNER_PASSWORD: ${OWNER_PASSWORD:?Run ops/setup_env.py first}
@@ -27,7 +27,7 @@ services:
       BACKUP_DIR: /backup-store
     volumes:
       - control:/control
-      - ${BACKUP_HOST_DIR:?Choose a private backup storage directory}:/backup-store:ro
+      - ${BACKUP_HOST_DIR:-./backups}:/backup-store:ro
     depends_on:
       db:
         condition: service_healthy
@@ -37,10 +37,10 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
-  nginx:
+  web:
     build:
       context: .
-      dockerfile: nginx/Dockerfile
+      dockerfile: frontend/Dockerfile
     ports:
       - "127.0.0.1:8080:80"
     depends_on:
@@ -51,13 +51,13 @@ services:
     build: ./backend
     command: ["python", "-m", "app.backups", "worker"]
     environment:
-      BACKUP_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/mizan
-      APP_DB_USER: mizan
+      BACKUP_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/inventory
+      APP_DB_USER: inventory
       CONTROL_DIR: /control
       BACKUP_DIR: /backup-store
     volumes:
       - control:/control
-      - ${BACKUP_HOST_DIR}:/backup-store
+      - ${BACKUP_HOST_DIR:-./backups}:/backup-store
     depends_on:
       api:
         condition: service_healthy

@@ -27,7 +27,7 @@ def test_backup_retention_checksum_and_recovery_copy(store,monkeypatch):
 
 def test_corrupted_restore_cannot_connect_to_database(store,monkeypatch):
     root,_=store
-    name="mizan-test.dump";(root/name).write_bytes(b"corrupted")
+    name="inventory-test.dump";(root/name).write_bytes(b"corrupted")
     (root/(name+".json")).write_text(json.dumps({"sha256":"wrong","schema":"0001"}))
     monkeypatch.setattr(b,"connect",lambda *args:pytest.fail("Restore connected before checksum validation"))
     with pytest.raises(RuntimeError,match="checksum"):b.restore(name)

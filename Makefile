@@ -1,25 +1,58 @@
-COMPOSE = docker compose --env-file .env
+SHELL := /bin/sh
 
-all: up
+COMPOSE ?= docker compose
+BACKUP_DIR ?= ./backups
+export BACKUP_HOST_DIR := $(BACKUP_DIR)
 
-env:
-	@if [ ! -f .env ]; then python3 ops/setup_env.py; fi
+.PHONY: up start down stop restart ps logs build backup test typecheck clean
 
-up: env
-	@$(COMPOSE) up --build -d
+up: .env backup-dir
+	$(COMPOSE) up --build -d
+
+start: up
+
+.env:
+	python3 ops/setup_env.py
+
+backup-dir:
+	mkdir -p "$(BACKUP_HOST_DIR)"
 
 down:
-	@$(COMPOSE) down --remove-orphans
+	$(COMPOSE) down
 
 down-v:
-	@$(COMPOSE) down --volumes --remove-orphans
+	$(COMPOSE) down --volumes --remove-orphans
 
-re: down up
+stop:
+	$(COMPOSE) stop
 
-logs:
-	@$(COMPOSE) logs --tail=100 -f
+restart:
+	$(COMPOSE) restart
 
 ps:
-	@$(COMPOSE) ps
+	$(COMPOSE) ps
 
-.PHONY: all env up down down-v re logs ps
+logs:
+	$(COMPOSE) logs --tail=100 -f
+
+build:
+	$(COMPOSE) build
+
+backup:
+	$(COMPOSE) exec backup-worker python -m app.backups backup
+
+test:
+	PYTHONPATH=. .venv/bin/pytest -q backend/tests
+	npm --prefix frontend ci
+	node frontend/tests/demo-workflows.cjs
+
+typecheck:
+	npm --prefix frontend run typecheck
+
+clean:
+	$(COMPOSE) down
+
+re:
+	$(MAKE) down
+	$(MAKE) up
+.PHONY: all up re start down stop restart ps logs build backup test typecheck clean

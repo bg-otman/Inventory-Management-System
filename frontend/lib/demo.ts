@@ -1,5 +1,5 @@
 import { AppState, Doc, Line, Product, Party, number, today, totals, balance } from "./types";
-const STORE="mizan-preview-v1";
+const STORE="inventory-preview-v1";
 const id=()=>crypto.randomUUID();
 const time=(days=0)=>new Date(Date.now()-days*86400000).toISOString();
 const cash=(n:number)=>n.toFixed(2);
@@ -47,7 +47,7 @@ export function readDemo():AppState {
   if(s.schema_version!==2){
    const samples=seed();
    delete s.settings.tax_id;delete s.settings.default_tax;
-   if(s.settings.company_name==="Mizan Trading")s.settings.company_name="Inventory Trading";
+   if(s.settings.company_name==="inventory Trading")s.settings.company_name="Inventory Trading";
    if(s.settings.company_name_ar==="تجارة ميزان")s.settings.company_name_ar="تجارة المخزون";
    for(const d of s.documents){
     delete d.tax;delete d.tax_rate;

@@ -18,7 +18,7 @@ def verify_password(password, stored):
     except (ValueError, TypeError): return False
 
 def current_user(request, db):
-    token = request.cookies.get("mizan_session", "")
+    token = request.cookies.get("inventory_session", "")
     session = db.get(Session, digest(token)) if token else None
     if not session or session.expires < now(): raise HTTPException(401, "Please sign in.")
     user = db.get(User, session.user_id)
@@ -35,8 +35,8 @@ def create_session(response, user, db):
     token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
     db.add(Session(token_hash=digest(token), csrf_hash=digest(csrf), user_id=user.id, expires=now()+timedelta(hours=12)))
     secure = os.environ.get("COOKIE_SECURE", "true").lower() == "true"
-    response.set_cookie("mizan_session", token, httponly=True, secure=secure, samesite="lax", max_age=43200, path="/")
-    response.set_cookie("mizan_csrf", csrf, httponly=False, secure=secure, samesite="lax", max_age=43200, path="/")
+    response.set_cookie("inventory_session", token, httponly=True, secure=secure, samesite="lax", max_age=43200, path="/")
+    response.set_cookie("inventory_csrf", csrf, httponly=False, secure=secure, samesite="lax", max_age=43200, path="/")
     return csrf
 
 _attempts = {}

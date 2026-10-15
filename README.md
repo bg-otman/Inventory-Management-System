@@ -13,6 +13,38 @@ Inventory is a simple online stock and accounts application with English and Ara
 
 The updated agreed requirements are in [docs/SPEC.md](docs/SPEC.md). This README describes what the current source actually implements and how to run it.
 
+## Quick start
+
+The simplest way to run the full application is:
+
+```bash
+make
+```
+
+The default target generates `.env` when needed, creates the local `./backups`
+directory, builds the images, and starts the Compose stack. Open
+<http://localhost:8080> after the `api` and `web` services are healthy. The
+generated owner password is printed by `ops/setup_env.py`; save it securely.
+
+Useful commands:
+
+```bash
+make ps                 # show service status
+make logs               # follow all service logs
+make down               # stop and remove containers (keep volumes)
+make backup             # request a backup from the worker
+make test               # run backend and preview checks
+make typecheck          # validate TypeScript
+```
+
+By default, backups are stored in `./backups`, which avoids requiring
+permission to create a directory at the filesystem root. For a deployment
+with a dedicated private backup mount, pass it explicitly:
+
+```bash
+make BACKUP_DIR=/mnt/private/inventory-backups
+```
+
 ## Implemented workflows
 
 | Area | Behavior |
@@ -70,7 +102,8 @@ The browser loads the statically exported Next.js app from Nginx. Requests to `/
 | `backend/app/main.py`, `security.py` | Routes, sessions, permissions and CSRF protection |
 | `backend/app/backups.py` | Weekly backup queue, verification, retention and restoration |
 | `backend/alembic/` | Versioned database migrations |
-| `compose.yaml`, `nginx/`, `ops/` | Production deployment and setup |
+| `compose.yaml`, `Makefile` | Root deployment entry points |
+| `frontend/Dockerfile`, `nginx/`, `ops/` | Production deployment and setup |
 
 All business writes run in database transactions. For this small installation, one PostgreSQL row lock serializes them, preventing simultaneous overselling or over-allocation. Retry identifiers reject changed requests and replay previously committed results. There is no offline queue or service worker. Authentication uses server-stored, hashed session tokens, secure HttpOnly cookies, CSRF tokens and scrypt password hashes.
 
@@ -81,23 +114,21 @@ The first API uses one state endpoint for simplicity. Products and transaction h
 Requires Node.js 22 and npm.
 
 ```bash
-cd frontend
-npm ci
-npm run dev
+npm --prefix frontend ci
+npm --prefix frontend run dev
 ```
 
 Open `http://localhost:3000`. No backend or credentials are needed for sample mode. The footer identifies sample mode. The sample is local to this browser and does not implement shared persistence, real authentication, or backups.
 
 ```bash
-cd frontend
-npm run build
+npm --prefix frontend run build
 ```
 
 This creates the static sample in `out/`. It is the build used for the private hosted preview. `NEXT_PUBLIC_DEMO` is a build-time switch: rebuilding is necessary to change modes.
 
 ## Run the actual application
 
-Requires Docker with Compose and Python 3 for the setup helper. The `nginx/` image builds the `frontend/` Next.js source with `NEXT_PUBLIC_DEMO=false` and serves the static result. The database starts with an owner and one warehouse, without demo records.
+Requires Docker with Compose and Python 3 for the setup helper. The production Dockerfile sets `NEXT_PUBLIC_DEMO=false`, builds Next.js, and serves the result behind Nginx. The database starts with an owner and one warehouse, without demo records.
 
 1. From the project root, generate deployment secrets:
 
@@ -107,13 +138,18 @@ Requires Docker with Compose and Python 3 for the setup helper. The `nginx/` ima
 
    Save the generated owner password in a password manager. This creates a private `.env` and refuses to overwrite an existing file. Set `OWNER_NAME`, `OWNER_USERNAME` and `BACKUP_HOST_DIR` as needed before first startup. Changing the initial owner variables later does not reset an existing account.
 
-2. For the default local launch, `BACKUP_HOST_DIR=./backups` is created by Docker and ignored by Git. For production, set it to a private off-host mount and create that directory before starting:
+2. Choose backup storage. The default is the project-local `./backups`
+   directory and requires no `sudo`:
 
    ```bash
-   sudo install -d -m 700 /srv/mizan-backups
+   mkdir -p backups
    ```
 
-   Use a private off-host mounted volume, or have the hosting operator replicate this directory off-host. A folder on the application machine alone does not protect against losing that machine. Keep database dumps and `.env` out of the public web root and source control.
+   For a dedicated mount, set `BACKUP_HOST_DIR` in `.env` and create that
+   directory with the permissions required by Docker. A folder on the
+   application machine alone does not protect against losing that machine;
+   replicate backups off-host. Keep database dumps and `.env` out of the
+   public web root and source control.
 
 3. Start the services:
 
@@ -168,20 +204,20 @@ A failed database restore transaction rolls back. If the worker crashes during r
 Operator actions when the UI is unavailable:
 
 ```bash
-docker compose logs --tail=200 backup-worker
-docker compose exec backup-worker python -m app.backups backup
+make logs
+make backup
 # Destructive: replace the live database with this exact verified snapshot.
-docker compose exec backup-worker python -m app.backups restore mizan-TIMESTAMP-ID.dump
+docker compose exec backup-worker python -m app.backups restore inventory-TIMESTAMP-ID.dump
 ```
 
-Use the actual archive name shown in the private backup directory. Coordinate operator commands with the worker; do not run competing restores or backups. Job details are in the control volume at `/control/jobs`. Test a restore on a separate PostgreSQL installation before putting client data in the system. Weekly snapshots can lose changes since the selected backup; they are not continuous recovery.
+Use the actual archive name shown in the configured backup directory. Coordinate operator commands with the worker; do not run competing restores or backups. Job details are in the control volume at `/control/jobs`. Test a restore on a separate PostgreSQL installation before putting client data in the system. Weekly snapshots can lose changes since the selected backup; they are not continuous recovery.
 
 ## Verification and remaining launch work
 
 Validated in the implementation environment:
 
 - 17 backend tests covering authentication/CSRF, supplier links, optional codes, units, stock atomicity, delayed delivery, receipt before invoice, deposits/multi-invoice allocation, walk-in rules, tax-free totals, money rounding/limits, snapshots/XSS escaping, permissions/reversals, backup checksums/retention and interrupted-job handling, and migration of an existing dataset.
-- TypeScript validation and preview data workflow checks (`NODE_PATH=frontend/node_modules node tests/demo-workflows.cjs`).
+- TypeScript validation and preview data workflow checks (`node frontend/tests/demo-workflows.cjs`).
 - Next.js static export build and Alembic schema upgrade on temporary SQLite, including existing invoices and stock.
 
 PostgreSQL/Docker execution, real backup/restore, concurrent PostgreSQL requests, browser layout/RTL behavior and printer/scanner hardware have **not** been verified in this environment. Before client launch, run the supplied Compose stack, exercise simultaneous sales against limited stock, complete a restore drill and review the English/Arabic workflows and printed invoices with the client. This is an implemented MVP, not a claim of production acceptance.

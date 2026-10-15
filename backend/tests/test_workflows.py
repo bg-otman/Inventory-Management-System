@@ -28,7 +28,7 @@ def c(tmp_path):
     app.dependency_overrides[get_db]=override
     with TestClient(app) as client:
         ok(client.post("/api/v1/auth/login",json={"username":"owner","password":"test-password-123"}))
-        client.headers["X-CSRF-Token"]=client.cookies.get("mizan_csrf")
+        client.headers["X-CSRF-Token"]=client.cookies.get("inventory_csrf")
         yield client
     app.dependency_overrides.clear();engine.dispose()
 
@@ -136,7 +136,7 @@ def test_reversal_and_permissions(c):
     ok(req(c,"/documents/"+d+"/reverse",{"reason":"Mistake"}))
     assert D(state(c)["stock"][0]["quantity"])==10
     ok(c.post("/api/v1/auth/login",json={"username":"employee","password":"test-password-123"}))
-    c.headers["X-CSRF-Token"]=c.cookies.get("mizan_csrf")
+    c.headers["X-CSRF-Token"]=c.cookies.get("inventory_csrf")
     assert req(c,"/stock/adjust",{"product_id":p,"warehouse_id":"main","quantity":"1","reason":"Forbidden"}).status_code==403
     assert req(c,"/settings",{"company_name":"Forbidden"},method="PATCH").status_code==403
 

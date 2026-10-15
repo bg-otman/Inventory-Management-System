@@ -11,7 +11,7 @@ from .security import current_user, owner, create_session, verify_password, hash
 from . import services as svc
 
 app=FastAPI(title="Inventory API", version="0.2.0")
-CONTROL=Path(os.environ.get("CONTROL_DIR","/tmp/mizan-control"))
+CONTROL=Path(os.environ.get("CONTROL_DIR","/tmp/inventory-control"))
 
 @app.middleware("http")
 async def maintenance(request,call_next):
@@ -69,9 +69,9 @@ def login(data:LoginInput,request:Request,response:Response,db=Depends(get_db)):
 
 @app.post("/api/v1/auth/logout")
 def logout(request:Request,response:Response,db=Depends(get_db),user=Depends(auth)):
-    s=db.get(Session,digest(request.cookies.get("mizan_session","")))
+    s=db.get(Session,digest(request.cookies.get("inventory_session","")))
     if s: db.delete(s)
-    db.commit();response.delete_cookie("mizan_session");response.delete_cookie("mizan_csrf")
+    db.commit();response.delete_cookie("inventory_session");response.delete_cookie("inventory_csrf")
     return {"ok":True}
 
 @app.get("/api/v1/state")

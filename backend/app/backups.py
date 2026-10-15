@@ -6,7 +6,7 @@ from sqlalchemy.engine import make_url
 from fastapi import HTTPException
 
 ROOT=Path(os.environ.get("BACKUP_DIR","/backup-store"))
-CONTROL=Path(os.environ.get("CONTROL_DIR","/tmp/mizan-control"))
+CONTROL=Path(os.environ.get("CONTROL_DIR","/tmp/inventory-control"))
 def utc():return datetime.now(timezone.utc)
 def write_json(path,data):
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -34,7 +34,7 @@ def list_backups():
 def enqueue(kind,actor,backup=None,key=None):
     if not enabled():raise HTTPException(503,"The backup worker is not running. Check server configuration.")
     if kind=="restore":
-        if not backup or not re.fullmatch(r"mizan-[A-Za-z0-9_-]+\.dump",backup) or not (ROOT/backup).is_file():
+        if not backup or not re.fullmatch(r"inventory-[A-Za-z0-9_-]+\.dump",backup) or not (ROOT/backup).is_file():
             raise HTTPException(404,"Backup not found.")
     jobid=hashlib.sha256((actor+str(key or uuid.uuid4())).encode()).hexdigest()[:32]
     p=CONTROL/"jobs"/(jobid+".json")
@@ -45,7 +45,7 @@ def pg_env(database=None):
     url=make_url(os.environ["BACKUP_DATABASE_URL"])
     env=os.environ.copy()
     env.update(PGHOST=url.host or "db",PGPORT=str(url.port or 5432),PGUSER=url.username or "postgres",
-               PGPASSWORD=url.password or "",PGDATABASE=database or url.database or "mizan")
+               PGPASSWORD=url.password or "",PGDATABASE=database or url.database or "inventory")
     return env
 def pg_run(args,database=None):
     result=subprocess.run(args,env=pg_env(database),capture_output=True,text=True)
@@ -60,7 +60,7 @@ def checksum(path):
 
 def backup(recovery=False):
     ROOT.mkdir(parents=True,exist_ok=True)
-    name="mizan-"+utc().strftime("%Y%m%dT%H%M%SZ")+"-"+uuid.uuid4().hex[:6]+".dump"
+    name="inventory-"+utc().strftime("%Y%m%dT%H%M%SZ")+"-"+uuid.uuid4().hex[:6]+".dump"
     target=ROOT/name;temp=ROOT/(name+".part")
     try:
         pg_run(["pg_dump","-Fc","--no-owner","--no-privileges","--file",str(temp)])
@@ -89,8 +89,8 @@ def restore(name):
     target=ROOT/name;meta=json.loads((ROOT/(name+".json")).read_text())
     if checksum(target)!=meta["sha256"]:raise RuntimeError("Backup checksum does not match.")
     if meta.get("schema")!="0002":raise RuntimeError("Restore requires the matching application/schema version.")
-    shadow="mizan_restore_"+uuid.uuid4().hex[:10]
-    role=os.environ.get("APP_DB_USER","mizan")
+    shadow="inventory_restore_"+uuid.uuid4().hex[:10]
+    role=os.environ.get("APP_DB_USER","inventory")
     maintenance=CONTROL/"maintenance"
     try:
         with connect("postgres") as conn:conn.execute(sql.SQL("CREATE DATABASE {} OWNER {}").format(sql.Identifier(shadow),sql.Identifier(role)))
@@ -176,5 +176,5 @@ if __name__=="__main__":
     elif args.command=="backup":print(json.dumps(backup()))
     else:
         if not args.name:parser.error("restore requires a backup filename")
-        if not re.fullmatch(r"mizan-[A-Za-z0-9_-]+\.dump",args.name):parser.error("Invalid backup filename")
+        if not re.fullmatch(r"inventory-[A-Za-z0-9_-]+\.dump",args.name):parser.error("Invalid backup filename")
         print(json.dumps(restore(args.name)))

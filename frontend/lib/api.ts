@@ -8,7 +8,7 @@ export async function loadState():Promise<AppState>{
  if(!r.ok)throw new Error("Could not load your workspace.");
  return r.json();
 }
-const csrf=()=>decodeURIComponent(document.cookie.split("; ").find(v=>v.startsWith("mizan_csrf="))?.split("=")[1]||"");
+const csrf=()=>decodeURIComponent(document.cookie.split("; ").find(v=>v.startsWith("inventory_csrf="))?.split("=")[1]||"");
 export async function command(path:string,body:unknown={},method="POST"){
  if(!navigator.onLine)throw new Error("OFFLINE");
  if(DEMO)return demoCommand(path,body,method);

@@ -2,8 +2,8 @@ const fs=require("node:fs"),ts=require("typescript"),assert=require("node:assert
 require.extensions[".ts"]=(mod,name)=>mod._compile(ts.transpileModule(fs.readFileSync(name,"utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020,esModuleInterop:true}}).outputText,name);
 const data=new Map();
 global.localStorage={getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,v)};
-const {purchaseReference,totals}=require("../frontend/lib/types.ts");
-const demo=require("../frontend/lib/demo.ts");
+const {purchaseReference,totals}=require("../lib/types.ts");
+const demo=require("../lib/demo.ts");
 (async()=>{
  demo.resetDemo(true);
  const cat=await demo.demoCommand("/categories",{name:"Coffee"});
@@ -42,7 +42,7 @@ const demo=require("../frontend/lib/demo.ts");
  old.settings.tax_id="old";old.settings.default_tax="20";
  old.documents[0].tax="20";old.documents[0].tax_rate="20";
  const oldTotal=old.documents[0].total,oldCount=old.documents.length;
- data.set("mizan-preview-v1",JSON.stringify(old));
+ data.set("inventory-preview-v1",JSON.stringify(old));
  s=demo.readDemo();assert.equal(s.documents.length,oldCount);assert.equal(s.documents[0].total,oldTotal);
  assert.equal(s.schema_version,2);assert(!("default_tax" in s.settings));assert(!("tax" in s.documents[0]));
  demo.resetDemo();s=demo.readDemo();
