@@ -4,11 +4,9 @@ services:
     environment:
       POSTGRES_DB: inventory
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run ops/setup_env.py first}
-      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Run ops/setup_env.py first}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     volumes:
       - postgres_data:/var/lib/postgresql
-      - ./ops/init-db.sh:/docker-entrypoint-initdb.d/10-inventory.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d inventory"]
       interval: 5s
@@ -18,11 +16,7 @@ services:
   api:
     build: ./backend
     environment:
-      DATABASE_URL: postgresql+psycopg://inventory:${APP_DB_PASSWORD}@db:5432/inventory
-      OWNER_USERNAME: ${OWNER_USERNAME:-owner}
-      OWNER_NAME: ${OWNER_NAME:-Owner}
-      OWNER_PASSWORD: ${OWNER_PASSWORD:?Run ops/setup_env.py first}
-      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD}@db:5432/inventory
       CONTROL_DIR: /control
       BACKUP_DIR: /backup-store
     volumes:
@@ -52,7 +46,7 @@ services:
     command: ["python", "-m", "app.backups", "worker"]
     environment:
       BACKUP_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/inventory
-      APP_DB_USER: inventory
+      APP_DB_USER: postgres
       CONTROL_DIR: /control
       BACKUP_DIR: /backup-store
     volumes:

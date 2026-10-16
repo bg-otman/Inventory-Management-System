@@ -6,13 +6,10 @@ export BACKUP_HOST_DIR := $(BACKUP_DIR)
 
 .PHONY: up start down stop restart ps logs build backup test typecheck clean
 
-up: .env backup-dir
+up: backup-dir
 	$(COMPOSE) up --build -d
 
 start: up
-
-.env:
-	python3 ops/setup_env.py
 
 backup-dir:
 	mkdir -p "$(BACKUP_HOST_DIR)"

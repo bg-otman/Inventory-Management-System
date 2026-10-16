@@ -3,7 +3,7 @@ const STORE="inventory-preview-v1";
 const id=()=>crypto.randomUUID();
 const time=(days=0)=>new Date(Date.now()-days*86400000).toISOString();
 const cash=(n:number)=>n.toFixed(2);
-function base():AppState{return {schema_version:2,user:{id:"owner",name:"Workspace owner",username:"owner",role:"owner"},categories:[],warehouses:[{id:"w1",name:"Main warehouse"},{id:"w2",name:"Reserve warehouse"}],products:[],stock:[],parties:[],documents:[],payments:[],movements:[],activity:[],settings:{company_name:"Inventory Trading",company_name_ar:"تجارة المخزون",phone:"+212 5 22 00 00 00",address:"Casablanca, Morocco",logo:""},users:[{id:"owner",name:"Workspace owner",username:"owner",role:"owner",active:true}]};}
+function base():AppState{return {schema_version:3,workspace:{name:"Local workspace"},user:{role:"workspace"},categories:[],warehouses:[{id:"w1",name:"Main warehouse"},{id:"w2",name:"Reserve warehouse"}],products:[],stock:[],parties:[],documents:[],payments:[],movements:[],activity:[],settings:{company_name:"Inventory Trading",company_name_ar:"تجارة المخزون",phone:"+212 5 22 00 00 00",address:"Casablanca, Morocco",logo:""}};}
 function snapshot(s:AppState,d:Doc){return {company:{...s.settings},party:s.parties.find(p=>p.id===d.party_id)||null,lines:structuredClone(d.items),paid_at_issue:d.paid,total:d.total,subtotal:d.subtotal,discount:d.discount,language:d.language,due_date:d.due_date};}
 export function seed():AppState{
  const s=base();
@@ -146,7 +146,6 @@ export async function demoCommand(path:string,body:any,method="POST"){
   }
   result={id:p!.id};label=String(p!.amount)+" MAD";action="payment.recorded";
  } else if(path==="/settings"){s.settings=body;action="settings.updated";}
- else if(path==="/users"){s.users.push({id:id(),name:body.name,username:body.username,role:body.role,active:true});}
  else fail("This action is available in production.");
  recalcPayments(s);s.activity.unshift({id:id(),action,label,created_at:time()});s.activity=s.activity.slice(0,50);write(s);return result;
 }

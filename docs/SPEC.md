@@ -37,7 +37,7 @@ The latest decisions replace the previous offline, conversion, import, and advan
 | Walk-in sales | Fully paid; no anonymous debt or deposits |
 | Languages | English or Arabic, one language displayed at a time |
 | Currency | MAD |
-| Employees | Can change selling prices and view purchase costs |
+| Single operator | Can manage products, pricing, stock, sales, purchases, parties, payments, and corrections |
 | Invoices | Company/contact details, numbered product lines, discount, total and payment information; no tax fields |
 | Starting data | Create and manage records in the application; no file-import feature |
 | Alerts | In-app low-stock alerts |
@@ -54,7 +54,7 @@ The latest decisions replace the previous offline, conversion, import, and advan
 | Purchases | Purchase entry, receipt status, supplier invoice, payments |
 | Customers | Search by name, purchase/payment history, balances and deposits |
 | Suppliers | Purchases, payment history, balances and advances |
-| Settings | Company details, warehouses, users, invoice defaults, backups |
+| Settings | Company details, warehouses, invoice defaults, backups |
 
 Put related actions together. Invoices, deliveries, and payments belong inside the sale/purchase detail page; they do not each need another main menu section.
 
@@ -241,7 +241,7 @@ Rules:
 
 Customer and supplier pages show their transactions, payment history, amounts remaining, and unused deposits/advances.
 
-There are no existing files to import. Start with empty records and enter data through the application. If real starting stock or old balances need recording manually, provide an owner-only opening entry with an as-of date and reason. Opening entries must not inflate current sales or cash receipts; payments can settle recorded opening debt.
+There are no existing files to import. Start with empty records and enter data through the application. If real starting stock or old balances need recording manually, provide an opening entry with an as-of date and reason. Opening entries must not inflate current sales or cash receipts; payments can settle recorded opening debt.
 
 ## 9. Online architecture and permissions
 
@@ -251,7 +251,7 @@ There are no existing files to import. Start with empty records and enter data t
 | API and business rules | FastAPI and Pydantic |
 | Database | PostgreSQL, SQLAlchemy, Alembic |
 | Hosting | One online deployment, Docker Compose, Nginx, HTTPS |
-| Authentication | Backend-managed sessions in secure cookies |
+| Access | One private deployment with no application accounts or sign-in |
 | Invoice output | One template rendered in the selected language |
 | Scheduling | One server-side weekly backup job |
 
@@ -259,12 +259,7 @@ Route pages to Next.js and /api/v1 to FastAPI under one public origin. Keep Post
 
 When connectivity is lost, show a connection message and prevent posting. Do not queue offline sales or payments. If a request times out with an uncertain outcome, retry using the same operation identifier so it cannot create duplicate stock or payments.
 
-Initial roles:
-
-- Owner: all operations, company settings, users, manual opening entries, corrections, backups, and restoration.
-- Employee: product/category creation and daily transactions, including selling-price changes and purchase-cost visibility.
-
-Enforce permissions in FastAPI. Keep a record of who posted changes.
+There are no owner or employee roles. All operations are available to the single workspace. Keep a fixed local actor label in the audit history.
 
 Use database transactions, concurrency checks, duplicate-request protection, and decimal calculations. These are backend safeguards, not extra dashboard workflows.
 
@@ -278,7 +273,7 @@ Use database transactions, concurrency checks, duplicate-request protection, and
 | Sales | Sale and lines; invoice snapshot/number; one delivery status/date |
 | Purchases | Purchase and lines; one receipt status/date; one supplier invoice status/reference |
 | Payments | Customer/supplier payments and invoice/opening-debt allocations |
-| Administration | Users, sessions, company settings, activity history, backup records |
+| Administration | Company settings, activity history, backup records |
 
 Keep a module per business area inside one backend. No microservices or custom permission builder.
 
@@ -315,13 +310,13 @@ Show:
 
 ### Restore workflow
 
-1. Owner selects a backup and reviews its timestamp.
+1. The operator selects a backup and reviews its timestamp.
 2. Explain that restoring replaces current data with that snapshot; subsequent changes are not included.
-3. Require owner confirmation and recent authentication.
+3. Require explicit confirmation.
 4. Pause writes and create a recovery backup of the current state.
 5. Restore the selected database/assets into an isolated target and validate them.
 6. Switch the application to the restored state only after successful validation.
-7. Invalidate old sessions, resume service, and record the restoration outcome.
+7. Resume service and record the restoration outcome.
 
 If validation fails, keep the current dataset and report failure. A backup/restore tool must remain usable by the hosting operator even when the web app is unavailable.
 

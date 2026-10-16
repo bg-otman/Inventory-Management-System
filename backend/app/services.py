@@ -3,9 +3,9 @@ from datetime import date
 from sqlalchemy import select, func
 from fastapi import HTTPException
 from .models import *
-from .security import owner
 
 ZERO = Decimal("0")
+ACTOR = "local"
 MAX_MONEY = Decimal("99999999999999.99")
 MAX_QUANTITY = Decimal("9999999999999.999")
 def money(value):
@@ -18,7 +18,7 @@ def require(db, model, key):
     if value is None: raise HTTPException(404, "Record not found.")
     return value
 def activity(db, user, action, label):
-    db.add(Activity(actor=user.id, action=action, label=str(label)[:200]))
+    db.add(Activity(actor=user or ACTOR, action=action, label=str(label)[:200]))
 def serialize(row):
     result = {}
     for c in row.__table__.columns:
@@ -50,7 +50,7 @@ def move(db, user, product_id, warehouse_id, delta, reason, source=None):
     if stock.quantity + delta < 0: raise HTTPException(409, "Not enough stock for this operation.")
     if stock.quantity + delta > MAX_QUANTITY: raise HTTPException(422, "Stock quantity exceeds the supported limit.")
     stock.quantity += delta
-    db.add(Movement(product_id=product_id,warehouse_id=warehouse_id,quantity=delta,reason=reason,source_id=source,actor=user.id))
+    db.add(Movement(product_id=product_id,warehouse_id=warehouse_id,quantity=delta,reason=reason,source_id=source,actor=user or ACTOR))
 
 def product_save(db,user,data,product_id=None):
     require(db,Category,data.category_id)
@@ -106,7 +106,7 @@ def allocate(db,user,payment,allocations):
 def record_payment(db,user,data):
     require(db,Party,data.party_id)
     payment=Payment(party_id=data.party_id,amount=data.amount,paid_at=data.paid_at.isoformat(),
-        method=data.method,reference=data.reference,actor=user.id)
+        method=data.method,reference=data.reference,actor=user or ACTOR)
     db.add(payment);db.flush();allocate(db,user,payment,data.allocations)
     activity(db,user,"payment.recorded",str(payment.amount)+" MAD")
     return {"id":payment.id}
@@ -124,7 +124,7 @@ def confirm(db,user,doc,payment_amount=ZERO):
         doc.number=f"PUR-{setting.next_purchase:06d}";setting.next_purchase+=1
     doc.status="confirmed";doc.issued_at=now()
     if payment_amount:
-        p=Payment(party_id=doc.party_id,amount=payment_amount,paid_at=date.today().isoformat(),actor=user.id)
+        p=Payment(party_id=doc.party_id,amount=payment_amount,paid_at=date.today().isoformat(),actor=user or ACTOR)
         db.add(p);db.flush()
         db.add(Allocation(payment_id=p.id,document_id=doc.id,amount=payment_amount))
     party=db.get(Party,doc.party_id) if doc.party_id else None
@@ -153,7 +153,7 @@ def save_document(db,user,data,doc_id=None):
                 raise HTTPException(409,"Received quantities, warehouse, and supplier cannot change.")
         for line in old: db.delete(line)
     else:
-        doc=Document(kind=data.kind,warehouse_id=data.warehouse_id,actor=user.id,status="draft",fulfilled=False)
+        doc=Document(kind=data.kind,warehouse_id=data.warehouse_id,actor=user or ACTOR,status="draft",fulfilled=False)
         db.add(doc);db.flush()
     for k in ("party_id","warehouse_id","discount","language","reference"): setattr(doc,k,getattr(data,k))
     doc.due_date=data.due_date.isoformat() if data.due_date else None
@@ -170,7 +170,6 @@ def save_document(db,user,data,doc_id=None):
     return {"id":doc.id}
 
 def reverse_document(db,user,doc,reason):
-    owner(user)
     if doc.status=="reversed": raise HTTPException(409,"Already reversed.")
     if paid(db,doc)>0: raise HTTPException(409,"Reverse allocated payments before reversing this document.")
     if doc.fulfilled:
@@ -179,7 +178,7 @@ def reverse_document(db,user,doc,reason):
     doc.status="reversed"
     activity(db,user,"document.reversed",(doc.number or "Draft")+": "+reason)
 
-def state(db,user):
+def state(db,user=ACTOR):
     docs=[]
     for d in db.scalars(select(Document).order_by(Document.created_at.desc())):
         data=serialize(d);data["items"]=[serialize(l) for l in document_lines(db,d)]
@@ -194,7 +193,7 @@ def state(db,user):
         data["allocations"]=[serialize(a) for a in db.scalars(select(Allocation).where(Allocation.payment_id==p.id))]
         payments.append(data)
     setting=db.get(Setting,1)
-    return {"user":{"id":user.id,"name":user.name,"username":user.username,"role":user.role},
+    return {"workspace":{"name":"Local workspace"},"user":{"role":"workspace"},
         "categories":[serialize(c) for c in db.scalars(select(Category).order_by(Category.name))],
         "warehouses":[serialize(w) for w in db.scalars(select(Warehouse).order_by(Warehouse.name))],
         "products":[serialize(p) for p in db.scalars(select(Product).order_by(Product.created_at.desc()))],
@@ -203,6 +202,4 @@ def state(db,user):
         "documents":docs,"payments":payments,
         "movements":[serialize(m) for m in db.scalars(select(Movement).order_by(Movement.created_at.desc()).limit(300))],
         "activity":[serialize(a) for a in db.scalars(select(Activity).order_by(Activity.created_at.desc()).limit(50))],
-        "settings":{k:v for k,v in setting.data.items() if k not in ("tax_id","default_tax")},
-        "users":[{"id":u.id,"name":u.name,"username":u.username,"role":u.role,"active":u.active}
-                 for u in db.scalars(select(User))] if user.role=="owner" else []}
+        "settings":{k:v for k,v in setting.data.items() if k not in ("tax_id","default_tax")}}

@@ -1,16 +1,16 @@
 import os, json, hashlib, hmac, re
 from pathlib import Path
-from fastapi import FastAPI, Depends, Request, Response, HTTPException
+from fastapi import FastAPI, Depends, Request, HTTPException
 from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from .db import get_db
 from .models import *
 from .schemas import *
-from .security import current_user, owner, create_session, verify_password, hash_password, digest, limit_login
 from . import services as svc
 
 app=FastAPI(title="Inventory API", version="0.2.0")
+ACTOR="local"
 CONTROL=Path(os.environ.get("CONTROL_DIR","/tmp/inventory-control"))
 
 @app.middleware("http")
@@ -23,7 +23,7 @@ async def maintenance(request,call_next):
     response.headers["X-Content-Type-Options"]="nosniff"
     return response
 
-def auth(request:Request,db=Depends(get_db)): return current_user(request,db)
+def auth(): return ACTOR
 
 def mutation(request,db,user,fn):
     key=request.headers.get("Idempotency-Key","")
@@ -33,14 +33,14 @@ def mutation(request,db,user,fn):
     db.scalar(select(Setting).where(Setting.id==1).with_for_update())
     raw=request.state.payload
     fingerprint=hashlib.sha256((request.method+request.url.path+json.dumps(raw,sort_keys=True,default=str)).encode()).hexdigest()
-    previous=db.scalar(select(Operation).where(Operation.user_id==user.id,Operation.key==key))
+    previous=db.scalar(select(Operation).where(Operation.key==key))
     if previous:
         if not hmac.compare_digest(previous.request_hash,fingerprint): raise HTTPException(409,"This operation identifier was used for different input.")
         return previous.response
     try:
         result=fn()
         db.flush()
-        db.add(Operation(user_id=user.id,key=key,request_hash=fingerprint,response=result))
+        db.add(Operation(key=key,request_hash=fingerprint,response=result))
         db.commit()
         return result
     except IntegrityError:
@@ -53,26 +53,6 @@ def run(request,db,user,body,fn):
 
 @app.get("/api/v1/health")
 def health(): return {"status":"ok"}
-
-@app.post("/api/v1/auth/login")
-def login(data:LoginInput,request:Request,response:Response,db=Depends(get_db)):
-    # Same-origin JSON requests; browsers cannot send JSON cross-origin without a preflight.
-    origin=request.headers.get("origin")
-    host=request.headers.get("host","")
-    if origin and origin.split("://",1)[-1].rstrip("/")!=host: raise HTTPException(403,"Invalid request origin.")
-    limit_login((request.client.host if request.client else "")+":"+data.username.casefold())
-    user=db.scalar(select(User).where(User.username==data.username.casefold()))
-    valid=verify_password(data.password,user.password_hash) if user else verify_password(data.password,"0"*32+":"+"0"*128)
-    if not user or not user.active or not valid: raise HTTPException(401,"Incorrect username or password.")
-    csrf=create_session(response,user,db);db.commit()
-    return {"csrf":csrf,"name":user.name,"role":user.role}
-
-@app.post("/api/v1/auth/logout")
-def logout(request:Request,response:Response,db=Depends(get_db),user=Depends(auth)):
-    s=db.get(Session,digest(request.cookies.get("inventory_session","")))
-    if s: db.delete(s)
-    db.commit();response.delete_cookie("inventory_session");response.delete_cookie("inventory_csrf")
-    return {"ok":True}
 
 @app.get("/api/v1/state")
 def get_state(db=Depends(get_db),user=Depends(auth)): return svc.state(db,user)
@@ -90,7 +70,6 @@ def category(data:NameInput,request:Request,db=Depends(get_db),user=Depends(auth
 
 @app.post("/api/v1/warehouses")
 def warehouse(data:NameInput,request:Request,db=Depends(get_db),user=Depends(auth)):
-    owner(user)
     def action():
         w=Warehouse(name=data.name);db.add(w);db.flush();return {"id":w.id}
     return run(request,db,user,data,action)
@@ -120,7 +99,6 @@ def party_edit(id:str,data:PartyInput,request:Request,db=Depends(get_db),user=De
 
 @app.post("/api/v1/stock/adjust")
 def adjust(data:AdjustInput,request:Request,db=Depends(get_db),user=Depends(auth)):
-    owner(user)
     def action():
         svc.move(db,user,data.product_id,data.warehouse_id,data.quantity,data.reason)
         svc.activity(db,user,"stock.adjusted",data.reason);return {"ok":True}
@@ -128,7 +106,6 @@ def adjust(data:AdjustInput,request:Request,db=Depends(get_db),user=Depends(auth
 
 @app.post("/api/v1/stock/transfer")
 def transfer(data:TransferInput,request:Request,db=Depends(get_db),user=Depends(auth)):
-    owner(user)
     def action():
         if data.from_warehouse_id==data.to_warehouse_id: raise HTTPException(422,"Choose a different destination warehouse.")
         svc.move(db,user,data.product_id,data.from_warehouse_id,-data.quantity,"Warehouse transfer")
@@ -176,7 +153,6 @@ def payment_allocate(id:str,data:AllocateInput,request:Request,db=Depends(get_db
 
 @app.post("/api/v1/payments/{id}/reverse")
 def payment_reverse(id:str,data:ReasonInput,request:Request,db=Depends(get_db),user=Depends(auth)):
-    owner(user)
     def action():
         p=svc.require(db,Payment,id)
         if p.reversed:raise HTTPException(409,"Already reversed.")
@@ -185,19 +161,10 @@ def payment_reverse(id:str,data:ReasonInput,request:Request,db=Depends(get_db),u
 
 @app.patch("/api/v1/settings")
 def settings(data:SettingsInput,request:Request,db=Depends(get_db),user=Depends(auth)):
-    owner(user)
     def action():
         if data.logo and not re.fullmatch(r"data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+",data.logo):
             raise HTTPException(422,"Upload a PNG, JPEG, or WebP logo.")
         s=db.get(Setting,1);s.data=data.model_dump(mode="json");return {"ok":True}
-    return run(request,db,user,data,action)
-
-@app.post("/api/v1/users")
-def users(data:UserInput,request:Request,db=Depends(get_db),user=Depends(auth)):
-    owner(user)
-    def action():
-        u=User(username=data.username.casefold(),name=data.name,password_hash=hash_password(data.password),role=data.role)
-        db.add(u);db.flush();return {"id":u.id}
     return run(request,db,user,data,action)
 
 @app.get("/api/v1/invoices/{id}/print",response_class=HTMLResponse)
@@ -209,20 +176,16 @@ def invoice(id:str,db=Depends(get_db),user=Depends(auth)):
 
 @app.get("/api/v1/backups")
 def backups(user=Depends(auth)):
-    owner(user)
     from .backups import list_backups
     return list_backups()
 
 @app.post("/api/v1/backups")
 def backup_now(request:Request,db=Depends(get_db),user=Depends(auth)):
-    owner(user)
     from .backups import enqueue
-    return run(request,db,user,{},lambda:enqueue("backup",user.id,key=request.headers.get("Idempotency-Key")))
+    return run(request,db,user,{},lambda:enqueue("backup",user,key=request.headers.get("Idempotency-Key")))
 
 @app.post("/api/v1/backups/restore")
 def restore(data:RestoreInput,request:Request,db=Depends(get_db),user=Depends(auth)):
-    owner(user)
-    if not data.confirmed or not verify_password(data.password,user.password_hash):
-        raise HTTPException(403,"Confirm restoration and enter your current password.")
+    if not data.confirmed: raise HTTPException(422,"Confirm restoration before continuing.")
     from .backups import enqueue
-    return run(request,db,user,{"backup":data.backup,"confirmed":data.confirmed},lambda:enqueue("restore",user.id,data.backup,key=request.headers.get("Idempotency-Key")))
+    return run(request,db,user,{"backup":data.backup,"confirmed":data.confirmed},lambda:enqueue("restore",user,data.backup,key=request.headers.get("Idempotency-Key")))

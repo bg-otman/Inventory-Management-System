@@ -1,24 +1,19 @@
 import os, uuid
-os.environ["COOKIE_SECURE"]="false"
 import pytest
 from decimal import Decimal as D
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from app.db import Base,get_db
-from app.models import User,Setting,Warehouse
-from app.security import hash_password,_attempts
+from app.models import Setting,Warehouse
 from app.main import app
 
 @pytest.fixture
 def c(tmp_path):
-    _attempts.clear()
     engine=create_engine("sqlite:///"+str(tmp_path/"test.db"),connect_args={"check_same_thread":False})
     Base.metadata.create_all(engine)
     factory=sessionmaker(bind=engine,expire_on_commit=False)
     with factory.begin() as db:
-        for name,role in [("owner","owner"),("employee","employee")]:
-            db.add(User(id=name,username=name,name=name,password_hash=hash_password("test-password-123"),role=role))
         db.add(Setting(id=1,data={"company_name":"Original company","company_name_ar":"الشركة","phone":"","address":"","tax_id":"","default_tax":"0","logo":""}))
         db.add(Warehouse(id="main",name="Main"))
     def override():
@@ -27,8 +22,6 @@ def c(tmp_path):
             except Exception:db.rollback();raise
     app.dependency_overrides[get_db]=override
     with TestClient(app) as client:
-        ok(client.post("/api/v1/auth/login",json={"username":"owner","password":"test-password-123"}))
-        client.headers["X-CSRF-Token"]=client.cookies.get("inventory_csrf")
         yield client
     app.dependency_overrides.clear();engine.dispose()
 
@@ -50,10 +43,11 @@ def doc(c,p,**kwargs):
     return req(c,"/documents",data)
 def getdoc(c,id):return next(x for x in state(c)["documents"] if x["id"]==id)
 
-def test_auth_and_csrf(c):
-    assert c.post("/api/v1/categories",json={"name":"No"},headers={"X-CSRF-Token":""}).status_code==403
-    with TestClient(app) as anon:assert anon.get("/api/v1/state").status_code==401
-    assert c.post("/api/v1/auth/login",json={"username":"owner","password":"bad"}).status_code==401
+def test_single_workspace_has_no_authentication(c):
+    assert c.post("/api/v1/categories",json={"name":"No"},headers={"Idempotency-Key":str(uuid.uuid4())}).status_code==200
+    with TestClient(app) as anon:
+        assert anon.get("/api/v1/state").status_code==200
+        assert anon.post("/api/v1/auth/login",json={}).status_code==404
 
 def test_minimal_products_optional_codes_and_inline_category(c):
     product(c);product(c,"Second");s=state(c)
@@ -135,10 +129,8 @@ def test_reversal_and_permissions(c):
     ok(req(c,"/payments/"+payment+"/reverse",{"reason":"Mistake"}))
     ok(req(c,"/documents/"+d+"/reverse",{"reason":"Mistake"}))
     assert D(state(c)["stock"][0]["quantity"])==10
-    ok(c.post("/api/v1/auth/login",json={"username":"employee","password":"test-password-123"}))
-    c.headers["X-CSRF-Token"]=c.cookies.get("inventory_csrf")
-    assert req(c,"/stock/adjust",{"product_id":p,"warehouse_id":"main","quantity":"1","reason":"Forbidden"}).status_code==403
-    assert req(c,"/settings",{"company_name":"Forbidden"},method="PATCH").status_code==403
+    assert req(c,"/stock/adjust",{"product_id":p,"warehouse_id":"main","quantity":"1","reason":"Allowed"}).status_code==200
+    assert req(c,"/settings",{"company_name":"Changed"},method="PATCH").status_code==200
 
 def test_units_and_explicit_prices(c):
     p=product(c,unit="piece");stock(c,p);cu=party(c)

@@ -8,22 +8,6 @@ from .db import Base
 def uid(): return str(uuid.uuid4())
 def now(): return datetime.now(timezone.utc).replace(tzinfo=None)
 
-class User(Base):
-    __tablename__ = "users"
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
-    username: Mapped[str] = mapped_column(String(100), unique=True)
-    name: Mapped[str] = mapped_column(String(120))
-    password_hash: Mapped[str] = mapped_column(Text)
-    role: Mapped[str] = mapped_column(String(20), default="employee")
-    active: Mapped[bool] = mapped_column(Boolean, default=True)
-
-class Session(Base):
-    __tablename__ = "sessions"
-    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
-    csrf_hash: Mapped[str] = mapped_column(String(64))
-    expires: Mapped[datetime] = mapped_column(DateTime)
-
 class Category(Base):
     __tablename__ = "categories"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
@@ -149,11 +133,10 @@ class Setting(Base):
 class Operation(Base):
     __tablename__ = "operations"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
     key: Mapped[str] = mapped_column(String(100))
     request_hash: Mapped[str] = mapped_column(String(64))
     response: Mapped[dict] = mapped_column(JSON)
-    __table_args__ = (UniqueConstraint("user_id", "key"),)
+    __table_args__ = (UniqueConstraint("key"),)
 
 class Activity(Base):
     __tablename__ = "activity"

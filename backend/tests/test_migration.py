@@ -37,7 +37,7 @@ def test_upgrade_preserves_existing_records_and_links_known_supplier(tmp_path,mo
         settings=db.execute(select(t["settings"])).mappings().one()
         assert settings["data"]=={"company_name":"Existing business"}
         assert settings["next_invoice"]==8 and settings["next_purchase"]==3
-        assert db.scalar(select(t["alembic_version"].c.version_num))=="0002"
+        assert db.scalar(select(t["alembic_version"].c.version_num))=="0003"
     assert any(f["constrained_columns"]==["supplier_id"] for f in inspect(engine).get_foreign_keys("products"))
     checks={c["sqltext"] for c in inspect(engine).get_check_constraints("products")}
     assert {"threshold >= 0","price IS NULL OR price >= 0","purchase_cost IS NULL OR purchase_cost >= 0"}<=checks

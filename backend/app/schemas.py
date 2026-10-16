@@ -78,16 +78,6 @@ class TransferInput(Input):
     to_warehouse_id: str
     quantity: Decimal = Field(gt=0, max_digits=16, decimal_places=3)
 
-class LoginInput(Input):
-    username: str = Field(min_length=1,max_length=100)
-    password: str = Field(min_length=1,max_length=200)
-
-class UserInput(Input):
-    username: str = Field(min_length=1,max_length=100)
-    name: str = Field(min_length=1,max_length=120)
-    password: str = Field(min_length=12,max_length=200)
-    role: Literal["owner","employee"] = "employee"
-
 class SettingsInput(Input):
     company_name: str = Field(min_length=1,max_length=200)
     company_name_ar: str = Field(default="",max_length=200)
@@ -100,5 +90,4 @@ class ReasonInput(Input):
 
 class RestoreInput(Input):
     backup: str
-    password: str = Field(min_length=1,max_length=200)
     confirmed: bool

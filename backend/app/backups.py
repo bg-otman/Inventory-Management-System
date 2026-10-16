@@ -90,17 +90,16 @@ def restore(name):
     if checksum(target)!=meta["sha256"]:raise RuntimeError("Backup checksum does not match.")
     if meta.get("schema")!="0002":raise RuntimeError("Restore requires the matching application/schema version.")
     shadow="inventory_restore_"+uuid.uuid4().hex[:10]
-    role=os.environ.get("APP_DB_USER","inventory")
+    role=os.environ.get("APP_DB_USER","postgres")
     maintenance=CONTROL/"maintenance"
     try:
         with connect("postgres") as conn:conn.execute(sql.SQL("CREATE DATABASE {} OWNER {}").format(sql.Identifier(shadow),sql.Identifier(role)))
         pg_run(["pg_restore","--no-owner","--no-privileges","--exit-on-error","--single-transaction","--role",role,"--dbname",shadow,str(target)],shadow)
         with connect(shadow) as conn:
-            required={"users","products","stock","documents","payments","allocations","settings","sessions"}
+            required={"products","stock","documents","payments","allocations","settings"}
             actual={r[0] for r in conn.execute("SELECT tablename FROM pg_tables WHERE schemaname='public'")}
             if not required<=actual:raise RuntimeError("Required tables are missing.")
             if conn.execute("SELECT COUNT(*) FROM stock WHERE quantity<0").fetchone()[0]:raise RuntimeError("Invalid stock data.")
-            if conn.execute("SELECT COUNT(*) FROM users WHERE role='owner' AND active").fetchone()[0]<1:raise RuntimeError("No active owner in backup.")
         CONTROL.mkdir(parents=True,exist_ok=True);maintenance.write_text(utc().isoformat())
         # Stop already-open application transactions before the recovery snapshot.
         # New API requests are blocked by the shared maintenance marker.
@@ -113,7 +112,6 @@ def restore(name):
         recovery=backup(recovery=True)
         # All schema/data changes are one transaction. A failed restore rolls back.
         pg_run(["pg_restore","--clean","--if-exists","--no-owner","--no-privileges","--exit-on-error","--single-transaction","--role",role,"--dbname",pg_env()["PGDATABASE"],str(target)])
-        with connect() as conn:conn.execute("DELETE FROM sessions")
         return {"restored":name,"recovery_backup":recovery["name"]}
     finally:
         maintenance.unlink(missing_ok=True)
