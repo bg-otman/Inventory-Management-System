@@ -1,0 +1,85 @@
+{
+  "name": "inventory-desktop",
+  "productName": "Inventory",
+  "version": "1.5.0",
+  "description": "Offline stock and accounts for one Windows computer",
+  "author": "Inventory",
+  "private": true,
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "build:frontend": "npm --prefix frontend run build:production",
+    "start": "electron .",
+    "package:windows": "electron-builder --win zip --x64 && python3 scripts/finalize_windows_zip.py",
+    "format": "npm run format:javascript && npm run format:python",
+    "format:check": "npm run format:javascript:check && npm run format:python:check",
+    "format:javascript": "prettier --write \"frontend/**/*.{ts,tsx,js,jsx,cjs,mjs,css,json}\" \"desktop/**/*.{js,jsx,cjs,mjs,json}\" \"tests/**/*.{js,jsx,cjs,mjs,json}\" package.json",
+    "format:javascript:check": "prettier --check \"frontend/**/*.{ts,tsx,js,jsx,cjs,mjs,css,json}\" \"desktop/**/*.{js,jsx,cjs,mjs,json}\" \"tests/**/*.{js,jsx,cjs,mjs,json}\" package.json",
+    "format:python": "python -m black backend tests scripts",
+    "format:python:check": "python -m black --check backend tests scripts",
+    "test": "python3 -m pytest tests -q",
+    "test:desktop": "node --test tests/desktop-lifecycle.test.cjs tests/frontend-timeouts.test.cjs tests/price-calculation.test.cjs",
+    "test:runtime": "node tests/desktop-runtime.cjs",
+    "test:features": "node tests/feature-runtime.cjs",
+    "test:readiness": "node tests/readiness-runtime.cjs"
+  },
+  "devDependencies": {
+    "electron": "44.8.0",
+    "electron-builder": "26.15.3",
+    "prettier": "^3.6.2"
+  },
+  "build": {
+    "appId": "com.inventory.desktop",
+    "productName": "Inventory",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "desktop/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "backend",
+        "to": "backend",
+        "filter": [
+          "app/**/*.py",
+          "desktop_server.py"
+        ]
+      },
+      {
+        "from": "frontend/out",
+        "to": "frontend"
+      },
+      {
+        "from": "build/python",
+        "to": "python",
+        "filter": [
+          "**/*",
+          "!**/__pycache__/**",
+          "!**/*.pyc",
+          "!bin/**"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "signExecutable": false,
+      "icon": "desktop/icon.ico"
+    },
+    "artifactName": "Inventory-Windows-x64.${ext}",
+    "npmRebuild": false,
+    "extraFiles": [
+      {
+        "from": "START-HERE.txt",
+        "to": "START-HERE.txt"
+      }
+    ]
+  }
+}

@@ -1,0 +1,82 @@
+INVENTORY DESKTOP 1.5.0 — WINDOWS 10/11 (64 BITS)
+
+DÉMARRER
+1. Fermez l’ancienne application.
+2. Clic droit sur Inventory-Windows-x64.zip > Extraire tout.
+3. Ouvrez Inventory.exe dans le nouveau dossier extrait.
+Conservez tous les fichiers ensemble. Aucun compte, mot de passe,
+accès Internet, Docker ou installation de Python n’est nécessaire.
+Mettez votre raccourci à jour vers le nouvel Inventory.exe.
+
+VOS DONNÉES
+Utilisez le même compte Windows. Les données restent dans :
+%APPDATA%\InventoryDesktop\data
+Ne supprimez pas ce dossier. Une copie de récupération est créée avant
+la mise à niveau des anciennes données. Après la mise à niveau,
+continuez à utiliser la version 1.5.0. Les anciennes sauvegardes sont
+importables depuis Paramètres > Sauvegardes.
+
+NOUVEAUTÉS
+- Français uniquement, y compris les documents imprimés.
+- Suppression de tous les champs SKU et code-barres.
+- Recherche saisissable dans Stock et dans les lignes de documents.
+  Les accents et majuscules n’empêchent pas de trouver un produit.
+- Stock > Entrepôts : Renommer, Retirer ou Réactiver.
+  Videz le stock et terminez les opérations en attente avant le retrait.
+- Modifier les factures d’achat et de vente déjà enregistrées.
+- Devis pour des produits du catalogue ou des articles libres,
+  même sans stock, pour un client enregistré ou un client de passage.
+- Historique des devis et bons de livraison dans chaque fiche client.
+- Créer, modifier et imprimer les bons de livraison.
+- Logo et informations de l’entreprise sur tous les documents.
+
+CONVERSIONS
+Devis > Convertir en facture : ouvre une facture brouillon à vérifier.
+Associez les articles libres à des produits du catalogue, puis confirmez.
+Le prix du devis est conservé quand vous associez un article libre.
+
+Facture > Convertir en devis : crée une copie liée. La facture d’origine
+reste enregistrée avec ses paiements et son stock. Ce n’est pas une annulation.
+
+Facture > Créer un bon de livraison : crée un bon lié, sans déduire le stock
+une seconde fois. Les devis et bons ne changent jamais les paiements,
+les dettes ni le stock. Enregistrez la livraison dans la vente correspondante.
+Une conversion répétée ouvre la copie existante.
+
+CORRIGER UN DOCUMENT
+Ouvrez le document > Modifier le document > Enregistrer les modifications.
+Le numéro est conservé et l’historique des corrections est disponible.
+Pour une facture déjà livrée/reçue, seule la différence de stock est appliquée.
+Une correction ne peut pas rendre le stock négatif ni réduire le total sous
+le montant déjà payé. Enregistrez d’abord le remboursement réel ou annulez
+le paiement erroné. Une vente de passage doit rester entièrement payée.
+Modifier un devis ou un bon lié ne modifie pas automatiquement la facture.
+
+UTILISATION HABITUELLE
+Ajouter un produit crée son achat lié avec quantité, fournisseur, coût
+et paiement. Cochez Stock déjà existant pour une quantité d’ouverture
+sans achat ni dette fournisseur. Nom et catégorie restent obligatoires.
+Les prix de détail, de gros et d’achat acceptent jusqu’à 6 décimales.
+Les totaux et paiements restent à 2 décimales, en MAD.
+Une vente peut utiliser plusieurs entrepôts, un entrepôt par ligne.
+Les fiches clients/fournisseurs permettent de suivre le solde et de
+recevoir ou verser de l’argent, avec un reçu numéroté pour chaque opération.
+
+SAUVEGARDES
+Sauvegarde automatique tous les 7 jours lorsque l’application est ouverte,
+avec rattrapage au prochain lancement. Les 4 dernières copies normales
+sont conservées. Paramètres permet de sauvegarder, exporter, importer et
+restaurer. Une copie de récupération précède toute restauration.
+Gardez aussi une copie exportée sur une autre clé ou un autre disque.
+
+EN CAS DE PROBLÈME
+Vérifiez que tout le ZIP est extrait et que votre raccourci ouvre la 1.5.0.
+Si une ancienne version reste en arrière-plan, terminez sa tâche Inventory
+une fois dans le Gestionnaire des tâches, puis ouvrez la nouvelle version.
+Utilisez Ouvrir le journal et transmettez :
+%APPDATA%\InventoryDesktop\startup.log
+Ne supprimez pas les données pour résoudre un écran blanc.
+
+Cette application n’est pas signée numériquement et ne demande pas de droits
+administrateur. Les tests sont exécutés sous Linux ; l’interface Windows
+native et votre imprimante n’ont pas pu être vérifiées sur ce système.
