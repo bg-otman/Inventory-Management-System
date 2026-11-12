@@ -60,13 +60,13 @@ class DocumentInput(Input):
     issued_date: date | None = None
     notes: str = Field(default="", max_length=4000)
     party_id: str | None = None
-    warehouse_id: str
+    warehouse_id: str | None = None
     items: list[LineInput] = Field(min_length=1, max_length=100)
     discount: Decimal = Field(default=Decimal(0), ge=0, max_digits=16, decimal_places=2)
     due_date: date | None = None
     language: Literal["fr"] = "fr"
     confirm: bool = True
-    fulfill: bool = True
+    fulfill: bool | None = None
     payment: Decimal = Field(default=Decimal(0), ge=0, max_digits=16, decimal_places=2)
 
 

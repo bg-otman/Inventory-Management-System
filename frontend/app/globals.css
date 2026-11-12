@@ -724,6 +724,13 @@ strong {
   margin-top: 3px;
   line-height: 1.7;
 }
+.standalone-documents-panel {
+  margin-bottom: 20px;
+}
+.standalone-documents-panel > .detail-actions {
+  padding: 0 24px 20px;
+  flex-wrap: wrap;
+}
 .dashboard-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 310px;

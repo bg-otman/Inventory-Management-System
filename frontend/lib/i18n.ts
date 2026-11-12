@@ -1,5 +1,11 @@
 import type { Lang } from './types';
 const words: Record<string, string> = {
+  documents: 'Documents sans stock',
+  documentsSubtitle: 'Factures, devis et bons de livraison avec des articles saisis librement.',
+  newDocument: 'Nouveau document sans stock',
+  deleteDocument: 'Supprimer le document',
+  deleteDocumentHelp:
+    'Le document sera annulé et retiré des documents actifs. Son numéro et son historique seront conservés. Annulez d’abord les paiements affectés.',
   quotes: 'Devis',
   deliveries: 'Bons de livraison',
   quotesSubtitle: 'Préparez vos offres, même pour des articles hors catalogue.',

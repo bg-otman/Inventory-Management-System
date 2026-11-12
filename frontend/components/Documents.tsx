@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Plus, Trash2, Printer, Wallet, Package } from 'lucide-react';
 import { Env, Modal, Field, Submit, IconButton, Badge } from './ui';
 import {
@@ -14,6 +14,7 @@ import {
   balance,
   dateLabel,
   purchaseReference,
+  standaloneProductSuggestions,
 } from '@/lib/types';
 import { printInvoice } from '@/lib/invoice';
 import { Status } from './App';
@@ -28,7 +29,7 @@ const titles: Record<DocKind, string> = {
   quote: 'Devis',
   delivery: 'Bon de livraison',
 };
-const empty = (wh: string): Line => ({
+const empty = (wh: string | null): Line => ({
   product_id: null,
   name: '',
   unit: 'unit',
@@ -38,19 +39,26 @@ const empty = (wh: string): Line => ({
 });
 export function DocumentForm({ env, data }: { env: Env; data: any }) {
   const { s, t } = env,
-    kind: DocKind = data?.kind || 'sale',
-    purchase = kind === 'purchase',
-    aux = kind === 'quote' || kind === 'delivery';
-  const existing = data?.id ? s.documents.find((d) => d.id === data.id) : undefined,
+    existing = data?.id ? s.documents.find((d) => d.id === data.id) : undefined,
+    standalone = existing ? existing.warehouse_id === null : !!data?.standalone,
     issued = existing?.status === 'confirmed';
+  const suggestions = useMemo(
+    () => (standalone ? standaloneProductSuggestions(s) : undefined),
+    [standalone, s.products, s.documents],
+  );
+  const [kind, setKind] = useState<DocKind>(existing?.kind || data?.kind || 'sale');
+  const purchase = kind === 'purchase',
+    aux = kind === 'quote' || kind === 'delivery';
   const [party, setParty] = useState(existing?.party_id || data?.party_id || ''),
-    [wh, setWh] = useState(existing?.warehouse_id || s.warehouses.find((w) => w.active)?.id || '');
+    [wh, setWh] = useState(
+      standalone ? '' : existing?.warehouse_id || s.warehouses.find((w) => w.active)?.id || '',
+    );
   const [items, setItems] = useState<Line[]>(
     existing?.items.map((l) => ({
       ...l,
       name: l.name || '',
       warehouse_id: l.warehouse_id || existing.warehouse_id,
-    })) || [empty(wh)],
+    })) || [empty(standalone ? null : wh)],
   );
   const [discount, setDiscount] = useState(existing?.discount || '0'),
     [payment, setPayment] = useState('0'),
@@ -105,7 +113,7 @@ export function DocumentForm({ env, data }: { env: Env; data: any }) {
       env.toast('Saisissez la désignation de chaque produit.', true);
       return;
     }
-    if (confirm && !aux && items.some((l) => !l.product_id)) {
+    if (confirm && !aux && !standalone && items.some((l) => !l.product_id)) {
       env.toast(
         'Associez chaque ligne à un produit du catalogue avant de confirmer la facture.',
         true,
@@ -120,12 +128,12 @@ export function DocumentForm({ env, data }: { env: Env; data: any }) {
       kind,
       revision: existing?.revision ?? null,
       party_id: party || null,
-      warehouse_id: wh,
+      warehouse_id: standalone ? null : wh,
       items: items.map((l) => ({
-        product_id: l.product_id || null,
+        product_id: standalone ? null : l.product_id || null,
         name: l.name || '',
         unit: l.unit || 'unit',
-        warehouse_id: purchase ? wh : l.warehouse_id || wh,
+        warehouse_id: standalone ? null : purchase ? wh : l.warehouse_id || wh,
         quantity: l.quantity,
         price: l.price === '' ? null : l.price,
       })),
@@ -135,8 +143,8 @@ export function DocumentForm({ env, data }: { env: Env; data: any }) {
       notes,
       language: 'fr',
       confirm,
-      fulfill: aux ? false : existing?.fulfilled || (!draft && fulfilled),
-      payment: confirm ? paidNow : '0',
+      fulfill: aux || standalone ? false : existing?.fulfilled || (!draft && fulfilled),
+      payment: confirm && !aux ? paidNow : '0',
     };
     try {
       const r = await env.act(
@@ -155,13 +163,31 @@ export function DocumentForm({ env, data }: { env: Env; data: any }) {
     >
       <form onSubmit={submit}>
         <div className="modal-body document-form">
-          {issued && !aux && (
-            <p className="warning-callout">
-              La correction conserve le numéro et l’historique. Le stock et le solde seront
-              recalculés. Les paiements restent inchangés.
+          {standalone && (
+            <p className="field-hint">
+              Recherchez un article dans le catalogue ou l’historique, même retiré ou sans stock, ou
+              saisissez un nouveau nom. La sélection copie ses détails dans une ligne libre.
             </p>
           )}
-          {aux && (
+          {standalone && !existing && (
+            <Field label="Type de document">
+              <select value={kind} onChange={(e) => setKind(e.target.value as DocKind)}>
+                {(['sale', 'quote', 'delivery'] as const).map((k) => (
+                  <option key={k} value={k}>
+                    {titles[k]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+          {issued && !aux && (
+            <p className="warning-callout">
+              {standalone
+                ? 'La correction conserve le numéro et l’historique. Le solde sera recalculé. Les paiements restent inchangés.'
+                : 'La correction conserve le numéro et l’historique. Le stock et le solde seront recalculés. Les paiements restent inchangés.'}
+            </p>
+          )}
+          {aux && !standalone && (
             <p className="field-hint">
               {kind === 'quote'
                 ? 'Produits du catalogue ou désignations libres, même sans stock. Aucun paiement ni mouvement de stock.'
@@ -187,16 +213,18 @@ export function DocumentForm({ env, data }: { env: Env; data: any }) {
                 onCreate={() => setNewParty(true)}
               />
             </Field>
-            <Field label="Entrepôt par défaut">
-              <select required value={wh} onChange={(e) => setWh(e.target.value)}>
-                {warehouses.map((w) => (
-                  <option key={w.id} value={w.id}>
-                    {w.name}
-                    {!w.active ? ' · Retiré' : ''}
-                  </option>
-                ))}
-              </select>
-            </Field>
+            {!standalone && (
+              <Field label="Entrepôt par défaut">
+                <select required value={wh} onChange={(e) => setWh(e.target.value)}>
+                  {warehouses.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name}
+                      {!w.active ? ' · Retiré' : ''}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
           </div>
           {newParty && (
             <InlineParty
@@ -227,8 +255,21 @@ export function DocumentForm({ env, data }: { env: Env; data: any }) {
                     products={s.products}
                     value={l.product_id}
                     name={l.name || ''}
-                    free={aux}
-                    onChange={(id, name) => pick(i, id, name)}
+                    free={aux || standalone}
+                    suggestions={suggestions}
+                    label={standalone ? 'Désignation' : undefined}
+                    onChange={(id, name, suggestion) =>
+                      standalone
+                        ? patch(i, {
+                            product_id: null,
+                            warehouse_id: null,
+                            name,
+                            ...(suggestion
+                              ? { unit: suggestion.unit, price: suggestion.price ?? items[i].price }
+                              : {}),
+                          })
+                        : pick(i, id, name)
+                    }
                   />
                   <input
                     aria-label="Quantité"
@@ -264,7 +305,7 @@ export function DocumentForm({ env, data }: { env: Env; data: any }) {
                   </IconButton>
                 </div>
                 <div className="line-options">
-                  {!purchase && (
+                  {!purchase && !standalone && (
                     <Field label="Entrepôt">
                       <select
                         value={l.warehouse_id || wh}
@@ -278,7 +319,7 @@ export function DocumentForm({ env, data }: { env: Env; data: any }) {
                       </select>
                     </Field>
                   )}
-                  {!p && aux && (
+                  {!p && (aux || standalone) && (
                     <Field label="Unité">
                       <select
                         value={l.unit || 'unit'}
@@ -367,19 +408,21 @@ export function DocumentForm({ env, data }: { env: Env; data: any }) {
             <button
               type="button"
               className="text-button add-line"
-              onClick={() => setItems((rows) => [...rows, empty(wh)])}
+              onClick={() => setItems((rows) => [...rows, empty(standalone ? null : wh)])}
             >
               <Plus size={16} />
               Ajouter une ligne
             </button>
-            <button
-              type="button"
-              className="text-button add-line"
-              disabled={newProduct || newParty || (purchase && !party)}
-              onClick={() => setNewProduct(true)}
-            >
-              Créer un produit
-            </button>
+            {!standalone && (
+              <button
+                type="button"
+                className="text-button add-line"
+                disabled={newProduct || newParty || (purchase && !party)}
+                onClick={() => setNewProduct(true)}
+              >
+                Créer un produit
+              </button>
+            )}
           </div>
           {newProduct && (
             <ProductEditor
@@ -434,7 +477,7 @@ export function DocumentForm({ env, data }: { env: Env; data: any }) {
                   onChange={(e) => setNotes(e.target.value)}
                 />
               </Field>
-              {!aux && (
+              {!aux && !standalone && (
                 <label className="check-row">
                   <input
                     type="checkbox"
@@ -544,6 +587,7 @@ export function DocumentDetail({ env, data }: { env: Env; data: { id: string } }
     );
   const purchase = d.kind === 'purchase',
     aux = d.kind === 'quote' || d.kind === 'delivery',
+    standalone = d.warehouse_id === null,
     party = s.parties.find((p) => p.id === d.party_id),
     linked = s.documents.filter((x) => x.id === d.source_id || x.source_id === d.id),
     revisions = [...(d.snapshot?.price_revisions || []), ...(d.snapshot?.revisions || [])];
@@ -563,8 +607,9 @@ export function DocumentDetail({ env, data }: { env: Env; data: { id: string } }
       <div className="modal-body">
         <div className="detail-meta">
           <Status d={d} t={t} />
+          {standalone && <Badge tone="neutral">Sans stock</Badge>}
           <span>{dateLabel(d.issued_at || d.created_at)}</span>
-          {!aux && (
+          {!aux && !standalone && (
             <Badge tone={d.fulfilled ? 'green' : 'neutral'}>
               {purchase
                 ? d.fulfilled
@@ -590,9 +635,14 @@ export function DocumentDetail({ env, data }: { env: Env; data: { id: string } }
                 <tr key={i}>
                   <td>
                     {l.name}
-                    <small className="warehouse-note">
-                      {s.warehouses.find((w) => w.id === (l.warehouse_id || d.warehouse_id))?.name}
-                    </small>
+                    {!standalone && (
+                      <small className="warehouse-note">
+                        {
+                          s.warehouses.find((w) => w.id === (l.warehouse_id || d.warehouse_id))
+                            ?.name
+                        }
+                      </small>
+                    )}
                   </td>
                   <td>
                     {quantityLabel(l.quantity)} {t(l.unit || 'unit')}
@@ -643,7 +693,7 @@ export function DocumentDetail({ env, data }: { env: Env; data: { id: string } }
                   Imprimer / Enregistrer en PDF
                 </button>
               )}
-              {!aux && !d.fulfilled && (purchase || d.status === 'confirmed') && (
+              {!aux && !standalone && !d.fulfilled && (purchase || d.status === 'confirmed') && (
                 <button
                   className="btn"
                   disabled={env.busy}
@@ -666,37 +716,27 @@ export function DocumentDetail({ env, data }: { env: Env; data: { id: string } }
             {d.kind !== 'purchase' && (
               <>
                 <p className="field-hint">
-                  La conversion crée une copie liée et conserve l’original, ses paiements et son
-                  stock. Une nouvelle facture doit être vérifiée puis confirmée. Un bon de livraison
-                  ne déduit pas le stock une seconde fois.
+                  {standalone
+                    ? 'La conversion crée une copie liée sans stock et conserve l’original et ses paiements. Une nouvelle facture doit être vérifiée puis confirmée.'
+                    : 'La conversion crée une copie liée et conserve l’original, ses paiements et son stock. Une nouvelle facture doit être vérifiée puis confirmée. Un bon de livraison ne déduit pas le stock une seconde fois.'}
                 </p>
                 <div className="button-row">
-                  {aux ? (
-                    <button
-                      className="btn"
-                      disabled={env.busy}
-                      onClick={() => void convert('sale')}
-                    >
-                      Convertir en facture
-                    </button>
-                  ) : (
-                    <>
+                  {(['sale', 'quote', 'delivery'] as const)
+                    .filter((kind) => kind !== d.kind)
+                    .map((kind) => (
                       <button
                         className="btn"
+                        key={kind}
                         disabled={env.busy}
-                        onClick={() => void convert('quote')}
+                        onClick={() => void convert(kind)}
                       >
-                        Convertir en devis
+                        {kind === 'sale'
+                          ? 'Convertir en facture'
+                          : kind === 'quote'
+                            ? 'Convertir en devis'
+                            : 'Créer un bon de livraison'}
                       </button>
-                      <button
-                        className="btn"
-                        disabled={env.busy}
-                        onClick={() => void convert('delivery')}
-                      >
-                        Créer un bon de livraison
-                      </button>
-                    </>
-                  )}
+                    ))}
                 </div>
               </>
             )}
@@ -754,12 +794,12 @@ export function DocumentDetail({ env, data }: { env: Env; data: { id: string } }
               onClick={() =>
                 env.open('reason', {
                   path: '/documents/' + d.id + '/reverse',
-                  label: 'reverse',
-                  help: 'reverseHelp',
+                  label: standalone ? 'deleteDocument' : 'reverse',
+                  help: standalone ? 'deleteDocumentHelp' : 'reverseHelp',
                 })
               }
             >
-              Annuler le document
+              {standalone ? 'Supprimer le document' : 'Annuler le document'}
             </button>
           </div>
         )}

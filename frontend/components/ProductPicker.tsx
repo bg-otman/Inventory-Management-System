@@ -1,44 +1,47 @@
 'use client';
 import { useId, useState } from 'react';
-import { Product, normalizeSearch } from '@/lib/types';
+import { Product, ProductSuggestion, normalizeSearch } from '@/lib/types';
 export default function ProductPicker({
   products,
   value,
   name,
   onChange,
   free = false,
+  suggestions,
+  label = 'Rechercher un produit',
 }: {
   products: Product[];
   value: string | null;
   name: string;
-  onChange: (id: string | null, name: string) => void;
+  onChange: (id: string | null, name: string, suggestion?: ProductSuggestion) => void;
   free?: boolean;
+  suggestions?: ProductSuggestion[];
+  label?: string;
 }) {
   const id = useId(),
     [open, setOpen] = useState(false),
     [index, setIndex] = useState(0);
-  const matches = products
-    .filter(
-      (p) =>
-        (p.active || p.id === value) &&
-        normalizeSearch(p.name + ' ' + p.description).includes(normalizeSearch(name)),
-    )
+  const matches = (suggestions ?? products.filter((p) => p.active || p.id === value))
+    .filter((p) => normalizeSearch(p.name + ' ' + p.description).includes(normalizeSearch(name)))
     .slice(0, 30);
-  const choose = (p: Product) => {
-    onChange(p.id, p.name);
+  const choose = (p: ProductSuggestion) => {
+    onChange(p.id, p.name, p);
     setOpen(false);
   };
   return (
     <div className="product-picker">
       <input
         role="combobox"
-        aria-label="Rechercher un produit"
+        aria-label={label}
         aria-autocomplete="list"
         aria-expanded={open}
         aria-controls={id}
         autoComplete="off"
+        maxLength={200}
         value={name}
-        placeholder="Tapez le nom du produit…"
+        placeholder={
+          suggestions ? 'Rechercher un article ou saisir un nom…' : 'Tapez le nom du produit…'
+        }
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
         onChange={(e) => {

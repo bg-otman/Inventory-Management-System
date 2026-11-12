@@ -328,7 +328,7 @@ def recalculate(db, doc, final=False):
 
 
 def fulfill(db, user, doc):
-    if doc.kind not in ("sale", "purchase"):
+    if doc.kind not in ("sale", "purchase") or doc.warehouse_id is None:
         raise HTTPException(422, "Ce document ne modifie pas le stock.")
     if doc.status == "reversed":
         raise HTTPException(409, "Cette opération a été annulée.")
@@ -484,8 +484,8 @@ def reverse_payment(db, user, payment, data):
 
 
 def confirm(db, user, doc, payment_amount=ZERO):
-    if doc.kind not in ("sale", "purchase") or any(
-        not l.product_id for l in document_lines(db, doc)
+    if doc.kind not in ("sale", "purchase") or (
+        doc.warehouse_id is not None and any(not l.product_id for l in document_lines(db, doc))
     ):
         raise HTTPException(422, "Associez chaque ligne de facture à un produit du catalogue.")
     if doc.status != "draft":
@@ -543,7 +543,11 @@ def invoice_lines(db, doc):
     return [
         {
             **serialize(line),
-            "warehouse_name": require(db, Warehouse, line.warehouse_id or doc.warehouse_id).name,
+            "warehouse_name": (
+                require(db, Warehouse, line.warehouse_id or doc.warehouse_id).name
+                if doc.warehouse_id is not None
+                else ""
+            ),
         }
         for line in document_lines(db, doc)
     ]

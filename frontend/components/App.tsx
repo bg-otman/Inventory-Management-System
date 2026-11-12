@@ -38,6 +38,7 @@ import {
   LoaderCircle,
   CheckCircle2,
   Trash2,
+  FileText,
 } from 'lucide-react';
 import {
   AppState,
@@ -66,6 +67,7 @@ const navs: {
   icon: typeof Package;
 }[] = [
   { id: 'dashboard', icon: LayoutDashboard },
+  { id: 'documents', icon: FileText },
   { id: 'stock', icon: Package },
   { id: 'sales', icon: ShoppingBag },
   { id: 'purchases', icon: ShoppingCart },
@@ -85,6 +87,7 @@ const icons: Record<string, typeof Package> = {
 };
 const pageKey: Record<string, string> = {
   dashboard: 'overviewTitle',
+  documents: 'documents',
   stock: 'stock',
   quotes: 'quotes',
   deliveries: 'deliveries',
@@ -96,6 +99,7 @@ const pageKey: Record<string, string> = {
 };
 const subKey: Record<string, string> = {
   dashboard: 'overviewSubtitle',
+  documents: 'documentsSubtitle',
   stock: 'stockSubtitle',
   quotes: 'quotesSubtitle',
   deliveries: 'deliveriesSubtitle',
@@ -154,6 +158,7 @@ export default function App() {
     if (
       [
         'dashboard',
+        'documents',
         'stock',
         'sales',
         'purchases',
@@ -246,6 +251,7 @@ export default function App() {
   const unpaidCount = s.documents.filter((d) => balance(d) > 0 && d.kind === 'sale').length;
   const goNew = () => {
     if (page === 'stock') env.open('product');
+    else if (page === 'documents') env.open('document', { kind: 'sale', standalone: true });
     else if (page === 'sales' || page === 'dashboard') env.open('document', { kind: 'sale' });
     else if (page === 'quotes' || page === 'deliveries')
       env.open('document', { kind: page === 'quotes' ? 'quote' : 'delivery' });
@@ -390,23 +396,26 @@ export default function App() {
                   {t(
                     page === 'stock'
                       ? 'addProduct'
-                      : page === 'quotes'
-                        ? 'newQuote'
-                        : page === 'deliveries'
-                          ? 'newDelivery'
-                          : page === 'purchases'
-                            ? 'newPurchase'
-                            : page === 'customers'
-                              ? 'addCustomer'
-                              : page === 'suppliers'
-                                ? 'addSupplier'
-                                : 'newSale',
+                      : page === 'documents'
+                        ? 'newDocument'
+                        : page === 'quotes'
+                          ? 'newQuote'
+                          : page === 'deliveries'
+                            ? 'newDelivery'
+                            : page === 'purchases'
+                              ? 'newPurchase'
+                              : page === 'customers'
+                                ? 'addCustomer'
+                                : page === 'suppliers'
+                                  ? 'addSupplier'
+                                  : 'newSale',
                   )}
                 </button>
               )}
             </div>
           </div>
           {page === 'dashboard' && <Dashboard env={env} navigate={navigate} />}
+          {page === 'documents' && <StandaloneDocumentsPage env={env} />}
           {page === 'stock' && <StockPage env={env} query={query} setQuery={setQuery} />}
           {page === 'quotes' && <DocumentsPage key="quote" env={env} kind="quote" />}
           {page === 'deliveries' && <DocumentsPage key="delivery" env={env} kind="delivery" />}
@@ -590,6 +599,20 @@ function Dashboard({ env, navigate }: { env: Env; navigate: (p: Page) => void })
           );
         })}
       </div>
+      <section className="panel standalone-documents-panel">
+        <div className="panel-heading">
+          <div>
+            <h2>Documents sans stock</h2>
+            <p>
+              Créez une facture, un devis ou un bon de livraison avec des articles saisis librement.
+            </p>
+          </div>
+          <button className="text-button" onClick={() => navigate('documents')}>
+            {t('viewAll')} <ArrowRight size={15} />
+          </button>
+        </div>
+        <StandaloneDocumentActions env={env} />
+      </section>
       <div className="dashboard-grid">
         <section className="panel recent-panel">
           <div className="panel-heading">
@@ -740,6 +763,19 @@ function DocTable({ docs, env, compact = false }: { docs: Doc[]; env: Env; compa
                 <button className="table-link" onClick={() => env.open('documentDetail', d)}>
                   {d.number || t('draft')}
                 </button>
+                {d.warehouse_id === null && (
+                  <small className="warehouse-note">
+                    {
+                      {
+                        sale: 'Facture de vente',
+                        quote: 'Devis',
+                        delivery: 'Bon de livraison',
+                        purchase: 'Achat',
+                      }[d.kind]
+                    }{' '}
+                    · Sans stock
+                  </small>
+                )}
               </td>
               <td>
                 <span className="cell-name">
@@ -758,7 +794,7 @@ function DocTable({ docs, env, compact = false }: { docs: Doc[]; env: Env; compa
                 <td>
                   <span className={'delivery-status ' + (d.fulfilled ? 'done' : '')}>
                     {d.fulfilled && <Check size={12} />}{' '}
-                    {['quote', 'delivery'].includes(d.kind)
+                    {['quote', 'delivery'].includes(d.kind) || d.warehouse_id === null
                       ? '—'
                       : t(
                           d.kind === 'sale'
@@ -1195,6 +1231,126 @@ function StockPage({
         </section>
       )}
     </>
+  );
+}
+function StandaloneDocumentActions({ env }: { env: Env }) {
+  return (
+    <div className="detail-actions">
+      {(
+        [
+          ['sale', 'Facture de vente'],
+          ['quote', 'Devis'],
+          ['delivery', 'Bon de livraison'],
+        ] as const
+      ).map(([kind, label]) => (
+        <button
+          key={kind}
+          className="btn"
+          onClick={() => env.open('document', { kind, standalone: true })}
+        >
+          <Plus size={16} /> {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+function StandaloneDocumentsPage({ env }: { env: Env }) {
+  const { s, t } = env;
+  const [query, setQuery] = useState(''),
+    [kind, setKind] = useState(''),
+    [status, setStatus] = useState(''),
+    [page, setPage] = useState(1);
+  const docs = s.documents.filter((d) => {
+    const customer = s.parties.find((p) => p.id === d.party_id)?.name || 'Client de passage';
+    return (
+      d.warehouse_id === null &&
+      (!kind || d.kind === kind) &&
+      (status ? d.status === status : d.status !== 'reversed') &&
+      normalizeSearch(
+        [d.number || 'Brouillon', customer, ...d.items.map((l) => l.name)].join(' '),
+      ).includes(normalizeSearch(query))
+    );
+  });
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(docs.length / 10)));
+  return (
+    <section className="panel standalone-documents-panel">
+      <div className="panel-heading">
+        <div>
+          <h2>Vos documents sans stock</h2>
+          <p>
+            Rattachés à vos clients ou au client de passage. Ouvrez un document pour le modifier, le
+            convertir ou le supprimer.
+          </p>
+        </div>
+      </div>
+      <StandaloneDocumentActions env={env} />
+      <div className="table-toolbar">
+        <div className="search-control">
+          <Search size={17} />
+          <input
+            aria-label="Rechercher un document sans stock"
+            placeholder="Numéro, client ou article…"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setPage(1);
+            }}
+          />
+        </div>
+        <select
+          aria-label="Type de document"
+          value={kind}
+          onChange={(e) => {
+            setKind(e.target.value);
+            setPage(1);
+          }}
+        >
+          <option value="">Tous les types</option>
+          <option value="sale">Factures de vente</option>
+          <option value="quote">Devis</option>
+          <option value="delivery">Bons de livraison</option>
+        </select>
+        <select
+          aria-label="Statut"
+          value={status}
+          onChange={(e) => {
+            setStatus(e.target.value);
+            setPage(1);
+          }}
+        >
+          <option value="">Documents actifs</option>
+          <option value="draft">Brouillons</option>
+          <option value="confirmed">Émis</option>
+          <option value="reversed">Supprimés / annulés</option>
+        </select>
+      </div>
+      <DocTable docs={docs.slice((currentPage - 1) * 10, currentPage * 10)} env={env} />
+      {!docs.length && (
+        <Empty title={t('noDocuments')} subtitle="Créez un document avec les boutons ci-dessus." />
+      )}
+      <div className="pagination">
+        <span>
+          {docs.length} {t('items')}
+        </span>
+        <div>
+          <IconButton
+            label={t('previous')}
+            disabled={currentPage === 1}
+            onClick={() => setPage(currentPage - 1)}
+          >
+            <ChevronLeft size={16} />
+          </IconButton>
+          <span>{currentPage}</span>
+          <IconButton
+            label={t('next')}
+            disabled={currentPage * 10 >= docs.length}
+            onClick={() => setPage(currentPage + 1)}
+          >
+            <ChevronRight size={16} />
+          </IconButton>
+        </div>
+      </div>
+    </section>
   );
 }
 function DocumentsPage({ env, kind }: { env: Env; kind: DocKind }) {

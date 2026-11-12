@@ -6,8 +6,8 @@ from contextlib import closing
 from decimal import Decimal
 from .decimal_type import price_text
 
-SCHEMA_VERSION = 5
-SUPPORTED_VERSIONS = (1, 2, 3, 4, SCHEMA_VERSION)
+SCHEMA_VERSION = 6
+SUPPORTED_VERSIONS = (1, 2, 3, 4, 5, SCHEMA_VERSION)
 
 
 def upgrade_prices(db, table, price_columns):
@@ -51,65 +51,71 @@ def upgrade_database(path):
         if version not in SUPPORTED_VERSIONS:
             raise ValueError("Unsupported Inventory database version.")
         db.execute("BEGIN IMMEDIATE")
-        columns = {r[1] for r in db.execute("PRAGMA table_info(products)")}
-        if "supplier_id" not in columns:
-            db.execute(
-                "ALTER TABLE products ADD COLUMN supplier_id VARCHAR(36) REFERENCES parties(id)"
-            )
-        if version < 3:
-            db.execute(
-                "ALTER TABLE payments ADD COLUMN direction VARCHAR(10) NOT NULL DEFAULT 'received'"
-            )
-            db.execute("ALTER TABLE payments ADD COLUMN notes TEXT NOT NULL DEFAULT ''")
-            db.execute(
-                "UPDATE payments SET direction='paid' WHERE party_id IN (SELECT id FROM parties WHERE kind='supplier')"
-            )
-            db.execute("ALTER TABLE settings ADD COLUMN next_receipt INTEGER NOT NULL DEFAULT 1")
-            db.execute(
-                """CREATE TABLE payment_offsets (
-                id VARCHAR(36) PRIMARY KEY, received_id VARCHAR(36) NOT NULL REFERENCES payments(id),
-                paid_id VARCHAR(36) NOT NULL REFERENCES payments(id), amount BIGINT NOT NULL CHECK(amount > 0))"""
-            )
-            db.execute(
-                """CREATE TABLE receipts (
-                id VARCHAR(36) PRIMARY KEY, number VARCHAR(60) NOT NULL UNIQUE,
-                party_id VARCHAR(36) REFERENCES parties(id), payment_id VARCHAR(36) NOT NULL REFERENCES payments(id),
-                action VARCHAR(20) NOT NULL, snapshot JSON NOT NULL, created_at DATETIME NOT NULL)"""
-            )
-        if "wholesale_price" not in columns:
-            db.execute(
-                "ALTER TABLE products ADD COLUMN wholesale_price BIGINT CHECK(wholesale_price IS NULL OR wholesale_price>=0)"
-            )
-        line_columns = {r[1] for r in db.execute("PRAGMA table_info(document_lines)")}
-        if "warehouse_id" not in line_columns:
-            db.execute(
-                "ALTER TABLE document_lines ADD COLUMN warehouse_id VARCHAR(36) REFERENCES warehouses(id)"
-            )
-        db.execute(
-            "UPDATE document_lines SET warehouse_id=(SELECT warehouse_id FROM documents WHERE documents.id=document_lines.document_id) WHERE warehouse_id IS NULL"
-        )
-        if version < 4:
-            upgrade_prices(db, "products", ("price", "purchase_cost", "wholesale_price"))
-            upgrade_prices(db, "document_lines", ("price",))
-        db.execute("ALTER TABLE warehouses ADD COLUMN active BOOLEAN NOT NULL DEFAULT 1")
-        db.execute(
-            "ALTER TABLE documents ADD COLUMN source_id VARCHAR(36) REFERENCES documents(id)"
-        )
-        db.execute("ALTER TABLE documents ADD COLUMN notes TEXT NOT NULL DEFAULT ''")
-        db.execute("ALTER TABLE documents ADD COLUMN revision INTEGER NOT NULL DEFAULT 0")
-        db.execute("ALTER TABLE settings ADD COLUMN next_quote INTEGER NOT NULL DEFAULT 1")
-        db.execute("ALTER TABLE settings ADD COLUMN next_delivery INTEGER NOT NULL DEFAULT 1")
-        schema = db.execute("SELECT sql FROM sqlite_master WHERE name='document_lines'").fetchone()[
-            0
-        ]
-        schema = re.sub(r"product_id (VARCHAR\(36\)) NOT NULL", r"product_id \1", schema)
-        schema = re.sub(
-            r'CREATE TABLE "?document_lines"?', "CREATE TABLE document_lines_v5", schema, count=1
-        )
+        if version < 5:
+            upgrade_to_v5(db, version)
+        schema = db.execute("SELECT sql FROM sqlite_master WHERE name='documents'").fetchone()[0]
+        schema = re.sub(r"warehouse_id (VARCHAR\(36\)) NOT NULL", r"warehouse_id \1", schema)
+        schema = re.sub(r'CREATE TABLE "?documents"?', "CREATE TABLE documents_v6", schema, count=1)
         db.execute(schema)
-        db.execute("INSERT INTO document_lines_v5 SELECT * FROM document_lines")
-        db.execute("DROP TABLE document_lines")
-        db.execute("ALTER TABLE document_lines_v5 RENAME TO document_lines")
+        db.execute("INSERT INTO documents_v6 SELECT * FROM documents")
+        db.execute("DROP TABLE documents")
+        db.execute("ALTER TABLE documents_v6 RENAME TO documents")
         if db.execute("PRAGMA foreign_key_check").fetchone():
             raise ValueError("Invalid references in the existing database; upgrade cancelled.")
         db.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
+
+
+def upgrade_to_v5(db, version):
+    columns = {r[1] for r in db.execute("PRAGMA table_info(products)")}
+    if "supplier_id" not in columns:
+        db.execute("ALTER TABLE products ADD COLUMN supplier_id VARCHAR(36) REFERENCES parties(id)")
+    if version < 3:
+        db.execute(
+            "ALTER TABLE payments ADD COLUMN direction VARCHAR(10) NOT NULL DEFAULT 'received'"
+        )
+        db.execute("ALTER TABLE payments ADD COLUMN notes TEXT NOT NULL DEFAULT ''")
+        db.execute(
+            "UPDATE payments SET direction='paid' WHERE party_id IN (SELECT id FROM parties WHERE kind='supplier')"
+        )
+        db.execute("ALTER TABLE settings ADD COLUMN next_receipt INTEGER NOT NULL DEFAULT 1")
+        db.execute(
+            """CREATE TABLE payment_offsets (
+                id VARCHAR(36) PRIMARY KEY, received_id VARCHAR(36) NOT NULL REFERENCES payments(id),
+                paid_id VARCHAR(36) NOT NULL REFERENCES payments(id), amount BIGINT NOT NULL CHECK(amount > 0))"""
+        )
+        db.execute(
+            """CREATE TABLE receipts (
+                id VARCHAR(36) PRIMARY KEY, number VARCHAR(60) NOT NULL UNIQUE,
+                party_id VARCHAR(36) REFERENCES parties(id), payment_id VARCHAR(36) NOT NULL REFERENCES payments(id),
+                action VARCHAR(20) NOT NULL, snapshot JSON NOT NULL, created_at DATETIME NOT NULL)"""
+        )
+    if "wholesale_price" not in columns:
+        db.execute(
+            "ALTER TABLE products ADD COLUMN wholesale_price BIGINT CHECK(wholesale_price IS NULL OR wholesale_price>=0)"
+        )
+    line_columns = {r[1] for r in db.execute("PRAGMA table_info(document_lines)")}
+    if "warehouse_id" not in line_columns:
+        db.execute(
+            "ALTER TABLE document_lines ADD COLUMN warehouse_id VARCHAR(36) REFERENCES warehouses(id)"
+        )
+    db.execute(
+        "UPDATE document_lines SET warehouse_id=(SELECT warehouse_id FROM documents WHERE documents.id=document_lines.document_id) WHERE warehouse_id IS NULL"
+    )
+    if version < 4:
+        upgrade_prices(db, "products", ("price", "purchase_cost", "wholesale_price"))
+        upgrade_prices(db, "document_lines", ("price",))
+    db.execute("ALTER TABLE warehouses ADD COLUMN active BOOLEAN NOT NULL DEFAULT 1")
+    db.execute("ALTER TABLE documents ADD COLUMN source_id VARCHAR(36) REFERENCES documents(id)")
+    db.execute("ALTER TABLE documents ADD COLUMN notes TEXT NOT NULL DEFAULT ''")
+    db.execute("ALTER TABLE documents ADD COLUMN revision INTEGER NOT NULL DEFAULT 0")
+    db.execute("ALTER TABLE settings ADD COLUMN next_quote INTEGER NOT NULL DEFAULT 1")
+    db.execute("ALTER TABLE settings ADD COLUMN next_delivery INTEGER NOT NULL DEFAULT 1")
+    schema = db.execute("SELECT sql FROM sqlite_master WHERE name='document_lines'").fetchone()[0]
+    schema = re.sub(r"product_id (VARCHAR\(36\)) NOT NULL", r"product_id \1", schema)
+    schema = re.sub(
+        r'CREATE TABLE "?document_lines"?', "CREATE TABLE document_lines_v5", schema, count=1
+    )
+    db.execute(schema)
+    db.execute("INSERT INTO document_lines_v5 SELECT * FROM document_lines")
+    db.execute("DROP TABLE document_lines")
+    db.execute("ALTER TABLE document_lines_v5 RENAME TO document_lines")

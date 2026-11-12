@@ -65,6 +65,19 @@ def save(db, user, data, doc_id=None):
     if doc and data.revision is not None and doc.revision != data.revision:
         raise HTTPException(409, "Ce document a changé. Fermez puis rouvrez le formulaire.")
     invoice = data.kind in INVOICES
+    standalone = data.warehouse_id is None
+    if data.fulfill is None:
+        data = data.model_copy(update={"fulfill": invoice and not standalone})
+    if data.kind == "purchase" and standalone:
+        raise HTTPException(422, "Choisissez un entrepôt pour l’achat.")
+    if doc and (doc.warehouse_id is None) != standalone:
+        raise HTTPException(409, "Le mode de stock d’un document enregistré ne peut pas changer.")
+    if standalone and data.fulfill:
+        raise HTTPException(422, "Un document sans stock ne peut pas déplacer de marchandises.")
+    if standalone and any(row.warehouse_id for row in data.items):
+        raise HTTPException(422, "Les lignes d’un document sans stock n’ont pas d’entrepôt.")
+    if standalone and any(row.product_id for row in data.items):
+        raise HTTPException(422, "Saisissez les articles sans stock comme des désignations libres.")
     confirmed = bool(doc and doc.status == "confirmed")
     old_lines = s.document_lines(db, doc) if doc else []
     old_stock = stock_vector(old_lines, doc.warehouse_id) if doc and doc.fulfilled else {}
@@ -108,13 +121,17 @@ def save(db, user, data, doc_id=None):
     if not data.confirm and data.payment:
         raise HTTPException(422, "Enregistrez l’avance dans le compte avant facturation.")
     allowed_old = {(l.product_id, l.warehouse_id or doc.warehouse_id) for l in old_lines}
-    default = s.require(db, Warehouse, data.warehouse_id)
-    if not default.active and (not doc or doc.warehouse_id != default.id):
+    default = s.require(db, Warehouse, data.warehouse_id) if not standalone else None
+    if default and not default.active and (not doc or doc.warehouse_id != default.id):
         raise HTTPException(409, "Choisissez un entrepôt actif.")
     prepared = []
     for row in data.items:
-        wh = s.require(db, Warehouse, row.warehouse_id or data.warehouse_id)
-        if not wh.active and (row.product_id, wh.id) not in allowed_old:
+        wh = (
+            s.require(db, Warehouse, row.warehouse_id or data.warehouse_id)
+            if not standalone
+            else None
+        )
+        if wh and not wh.active and (row.product_id, wh.id) not in allowed_old:
             raise HTTPException(409, "Choisissez un entrepôt actif.")
         if data.kind == "purchase" and wh.id != data.warehouse_id:
             raise HTTPException(422, "Toutes les lignes d’achat doivent utiliser le même entrepôt.")
@@ -125,7 +142,7 @@ def save(db, user, data, doc_id=None):
             s.quantity_valid(p, row.quantity)
             name, unit = p.name, p.unit
         else:
-            if invoice and (data.confirm or data.fulfill):
+            if invoice and not standalone and (data.confirm or data.fulfill):
                 raise HTTPException(
                     422,
                     "Associez chaque ligne à un produit du catalogue avant de confirmer ou recevoir la facture.",
@@ -141,7 +158,7 @@ def save(db, user, data, doc_id=None):
         prepared.append(
             Line(
                 product_id=row.product_id,
-                warehouse_id=wh.id,
+                warehouse_id=wh.id if wh else None,
                 name=name,
                 unit=unit,
                 quantity=row.quantity,
@@ -248,6 +265,8 @@ def convert(db, user, id, kind):
         ("sale", "quote"),
         ("sale", "delivery"),
         ("delivery", "sale"),
+        ("quote", "delivery"),
+        ("delivery", "quote"),
     ):
         raise HTTPException(422, "Cette conversion n’est pas disponible.")
     target = db.scalar(
@@ -257,10 +276,22 @@ def convert(db, user, id, kind):
     )
     if target:
         return {"id": target.id, "existing": True}
-    if kind == "sale" and source.source_id:
-        parent = db.get(Document, source.source_id)
-        if parent and parent.kind == "sale" and parent.status != "reversed":
-            return {"id": parent.id, "existing": True}
+    # Reuse the same active document even when conversions go through a third type.
+    # For example: quotation -> delivery note -> invoice must find an invoice
+    # already created from that quotation instead of posting a second debt.
+    pending, visited = [source], set()
+    while pending:
+        linked = pending.pop()
+        if linked.id in visited:
+            continue
+        visited.add(linked.id)
+        if linked.kind == kind and linked.status != "reversed":
+            return {"id": linked.id, "existing": True}
+        if linked.source_id:
+            parent = db.get(Document, linked.source_id)
+            if parent:
+                pending.append(parent)
+        pending.extend(db.scalars(select(Document).where(Document.source_id == linked.id)))
     target = Document(
         kind=kind,
         source_id=source.id,

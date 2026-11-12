@@ -103,7 +103,8 @@ class Document(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     kind: Mapped[str] = mapped_column(String(20))
     party_id: Mapped[str | None] = mapped_column(ForeignKey("parties.id"), nullable=True)
-    warehouse_id: Mapped[str] = mapped_column(ForeignKey("warehouses.id"))
+    # No warehouse means a standalone commercial document, without stock posting.
+    warehouse_id: Mapped[str | None] = mapped_column(ForeignKey("warehouses.id"), nullable=True)
     number: Mapped[str | None] = mapped_column(String(60), nullable=True, unique=True)
     status: Mapped[str] = mapped_column(String(20), default="draft")
     fulfilled: Mapped[bool] = mapped_column(Boolean, default=False)

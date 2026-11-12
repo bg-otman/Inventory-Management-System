@@ -52,6 +52,16 @@ export function PartyDetail({ env, data }: { env: Env; data: Party }) {
         </div>
         <p className="field-hint">{t('netBalanceHelp')}</p>
         <div className="detail-actions">
+          {p.kind === 'customer' && p.active && (
+            <button
+              className="btn"
+              onClick={() =>
+                env.open('document', { kind: 'sale', party_id: p.id, standalone: true })
+              }
+            >
+              <Plus size={16} /> Nouveau document sans stock
+            </button>
+          )}
           <button className="btn primary" onClick={() => env.open('payment', { party_id: p.id })}>
             <Plus size={16} />
             {t('addPayment')}

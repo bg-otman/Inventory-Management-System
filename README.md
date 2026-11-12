@@ -8,13 +8,15 @@ Standalone stock, invoices and accounts for **Windows 10/11 x64**, one person on
 2. Open **Inventory.exe** and keep all extracted files together.
 3. Update your desktop shortcut to the new executable. Use the same Windows user account to retain your workspace.
 
-Data stays in `%APPDATA%\InventoryDesktop\data`, separately from the program. **Do not delete this folder.** The app makes a recovery backup before upgrading older databases to schema 5. Keep using version 1.5.0 after upgrading; older executables cannot open the upgraded database. Historical amounts, payments and invoice numbers are preserved. Older desktop backups remain importable. Previously entered names and notes are not translated or erased.
+Data stays in `%APPDATA%\InventoryDesktop\data`, separately from the program. **Do not delete this folder.** The app makes a recovery backup before upgrading older databases to schema 6. Keep using this build after upgrading; older executables cannot open the upgraded database. Historical amounts, payments and invoice numbers are preserved. Older desktop backups remain importable. Previously entered names and notes are not translated or erased.
 
 ## What changed
 
+- **Documents sans stock:** the dashboard and sidebar offer standalone sales invoices, quotations and delivery notes. Enter descriptions, units, quantities and prices directly, without creating catalogue products or choosing a warehouse or supplier. Select a customer or **Client de passage**. Sales invoices reuse account balances and payments; walk-in invoices must be fully paid. Edit, print, convert between all three types, or use **Supprimer le document** to cancel it while preserving its number and history. Reverse allocated payments before deleting a paid invoice. Conversions preserve this mode and reuse existing linked documents, including conversions through a third type.
 - **French only:** Arabic language controls and Arabic print templates are removed. Older Arabic/English documents display French labels without rewriting the original financial snapshots.
 - **No SKU or barcode fields:** no scanner workflow or code inputs. Legacy stored codes remain untouched internally for migration compatibility and are not exposed by the UI/API.
 - **Search:** type a product name in Stock or a document line. Search ignores case and accents. Product selection supports keyboard arrows and Enter.
+- **Suggestions in documents without stock:** type a new article name or search the full catalogue and saved document lines, including removed products and products with no stock. Selecting a suggestion copies its name, unit and available selling price into an editable free line. The saved document has no product or warehouse link, and neither creating nor reusing an article changes stock or adds a catalogue product. Normal stock sales keep their existing product selection rules.
 - **Warehouses:** rename, remove, or reactivate a warehouse in Stock > Entrepôts. Removal requires an empty warehouse, no pending purchase/sale operations and another active warehouse. Historical records remain available.
 - **Edit documents:** open a saved purchase, sale, quotation or delivery note and choose **Modifier le document**. Correct lines, quantity, prices, customer/supplier where eligible, warehouse, discount, dates and notes. Issued documents keep their number and correction history.
 - **Quotations:** create a **Devis** for a named customer or **Client de passage**, with catalogue products, out-of-stock products, or free descriptions absent from the catalogue. Each customer has quotation and delivery-note history. Print with the company logo and the existing A4 table layout.
@@ -25,10 +27,11 @@ Data stays in `%APPDATA%\InventoryDesktop\data`, separately from the program. **
 | Action | Result |
 | --- | --- |
 | Create or edit a quotation / delivery note | Printable commercial document; no stock, cash or debt posting |
-| Quotation → invoice | Linked sale draft to review, then confirm; map free lines to catalogue products before confirming |
+| Quotation → invoice | Linked sale draft to review, then confirm; standalone documents keep their free lines; stock-managed documents require catalogue products |
 | Invoice → quotation | Linked quotation copy; the original invoice, payments and stock remain intact |
 | Invoice → delivery note | Linked delivery note; no second deduction of stock |
 | Delivery note → invoice | Linked sale draft; if the note was made from an invoice, opens that original invoice |
+| Quotation ↔ delivery note | Linked copy with the same lines and customer; no stock or account posting |
 | Repeat a conversion | Opens the existing active linked copy instead of creating duplicates |
 | Confirm a sale/purchase | Records its amount in the named account; walk-in sales must be fully paid |
 | Deliver a sale / receive a purchase | Moves stock once; delivery can be recorded later |
@@ -102,6 +105,8 @@ npm run test:desktop
 For unpackaged development, install the host Electron runtime with `node node_modules/electron/install.js`, set `INVENTORY_DEV_PYTHON` to the Python executable, build the frontend and run `npm start`.
 
 `npm run test:features`, `test:runtime` and `test:readiness` use real Electron with isolated test profiles, the built frontend and the real backend. They require a display, Playwright, `INVENTORY_TEST_PROFILE` (a new empty directory) and `INVENTORY_DEV_PYTHON`. `INVENTORY_PLAYWRIGHT_MODULE` may select an installed Playwright module. Linux CI-only sandbox/lock exceptions are never enabled by the shipped Windows launcher.
+
+`npm run test:standalone` checks the standalone document UI against the real backend in a headless browser, using its own temporary database. Build the frontend first. It requires Playwright with Chromium and `INVENTORY_DEV_PYTHON`; `INVENTORY_TEST_BROWSER` may point to a local Chromium/Edge executable. `INVENTORY_PLAYWRIGHT_MODULE` and `INVENTORY_TEST_SCREENSHOTS` select the Playwright module and optional screenshot directory.
 
 ## Verification scope
 

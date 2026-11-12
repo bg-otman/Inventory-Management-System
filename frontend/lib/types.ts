@@ -1,6 +1,7 @@
 export type Lang = 'fr';
 export type Page =
   | 'dashboard'
+  | 'documents'
   | 'stock'
   | 'sales'
   | 'purchases'
@@ -23,6 +24,7 @@ export type Product = {
   active: boolean;
   created_at?: string;
 };
+export type ProductSuggestion = Pick<Product, 'id' | 'name' | 'description' | 'unit' | 'price'>;
 export type Party = {
   id: string;
   kind: 'customer' | 'supplier';
@@ -49,7 +51,7 @@ export type Doc = {
   notes: string;
   revision: number;
   party_id: string | null;
-  warehouse_id: string;
+  warehouse_id: string | null;
   number: string | null;
   status: 'draft' | 'confirmed' | 'reversed';
   fulfilled: boolean;
@@ -217,3 +219,40 @@ export const normalizeSearch = (value: string) =>
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
+
+/** Descriptions to copy into free lines; stock availability never limits suggestions. */
+export function standaloneProductSuggestions(s: AppState): ProductSuggestion[] {
+  const suggestions: ProductSuggestion[] = [],
+    seen = new Set<string>();
+  const add = (suggestion: ProductSuggestion) => {
+    const key = normalizeSearch(suggestion.name.trim()) + '\0' + suggestion.unit;
+    if (!suggestion.name.trim() || seen.has(key)) return;
+    seen.add(key);
+    suggestions.push(suggestion);
+  };
+  for (const p of s.products) {
+    add({
+      id: 'catalogue:' + p.id,
+      name: p.name,
+      unit: p.unit,
+      price: p.price,
+      description: [p.active ? 'Catalogue' : 'Catalogue · Retiré', p.description]
+        .filter(Boolean)
+        .join(' · '),
+    });
+  }
+  const documents = [...s.documents].sort((a, b) => b.created_at.localeCompare(a.created_at));
+  for (const d of documents) {
+    d.items.forEach((line, i) =>
+      add({
+        id: 'history:' + d.id + ':' + i,
+        name: line.name || '',
+        unit: line.unit || 'unit',
+        // A purchase price is a cost, not a suggested selling price.
+        price: d.kind === 'purchase' ? null : line.price,
+        description: 'Historique des documents',
+      }),
+    );
+  }
+  return suggestions;
+}

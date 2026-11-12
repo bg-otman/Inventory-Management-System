@@ -17,9 +17,10 @@
     "format:python": "python -m black backend tests scripts",
     "format:python:check": "python -m black --check backend tests scripts",
     "test": "python3 -m pytest tests -q",
-    "test:desktop": "node --test tests/desktop-lifecycle.test.cjs tests/frontend-timeouts.test.cjs tests/price-calculation.test.cjs",
+    "test:desktop": "node --test tests/desktop-lifecycle.test.cjs tests/frontend-timeouts.test.cjs tests/price-calculation.test.cjs tests/document-products.test.cjs",
     "test:runtime": "node tests/desktop-runtime.cjs",
     "test:features": "node tests/feature-runtime.cjs",
+    "test:standalone": "node tests/standalone-runtime.cjs",
     "test:readiness": "node tests/readiness-runtime.cjs"
   },
   "devDependencies": {
